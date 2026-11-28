@@ -1,6 +1,8 @@
 {
   "collapsible": {
     "expandAll": "すべて展開",
-    "collapseAll": "すべて折りたたむ"
+    "collapseAll": "すべて折りたたむ",
+    "hidePanel": "パネルを非表示",
+    "showPanel": "パネルを表示"
   }
 }

@@ -1065,6 +1065,8 @@
   "nl/codeSourceFields.json::codeSourceFields.workersHint": "How many workers this source runs in each Provisa process. A column transform's batches run side by side across them, so more workers raise its throughput.",
   "nl/collapsible.json::collapsible.collapseAll": "Collapse all",
   "nl/collapsible.json::collapsible.expandAll": "Expand all",
+  "nl/collapsible.json::collapsible.hidePanel": "Hide the panel",
+  "nl/collapsible.json::collapsible.showPanel": "Show the panel",
   "nl/columnFilter.json::columnFilter.addTyped": "Add “{{value}}”",
   "nl/columnFilter.json::columnFilter.appliesToLoaded": "Filters apply to the {{count}} rows loaded, not the whole result.",
   "nl/columnFilter.json::columnFilter.apply": "Apply",

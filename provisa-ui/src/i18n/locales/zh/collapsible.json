@@ -1,6 +1,8 @@
 {
   "collapsible": {
     "expandAll": "全部展开",
-    "collapseAll": "全部折叠"
+    "collapseAll": "全部折叠",
+    "hidePanel": "隐藏面板",
+    "showPanel": "显示面板"
   }
 }

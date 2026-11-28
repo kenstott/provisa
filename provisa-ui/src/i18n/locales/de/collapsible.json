@@ -1,6 +1,8 @@
 {
   "collapsible": {
     "expandAll": "Alle ausklappen",
-    "collapseAll": "Alle einklappen"
+    "collapseAll": "Alle einklappen",
+    "hidePanel": "Bereich ausblenden",
+    "showPanel": "Bereich einblenden"
   }
 }

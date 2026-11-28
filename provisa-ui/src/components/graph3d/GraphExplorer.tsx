@@ -73,6 +73,7 @@ import { erdHref, nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import { NodeFacts } from "./nodeFacts";
 import { BreakableName } from "../list/BreakableName";
+import { SidePanel } from "../collapsible/SidePanel";
 import { TourRunningContext } from "../../tour/tourRunning";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
@@ -338,6 +339,8 @@ export function GraphExplorer({
   const [picked, setSelected] = useState<string | null>(initialSelected);
   const [hover, setHover] = useState<GraphHover | null>(null);
   const [command, setCommand] = useState<CameraCommand | null>(null);
+  // REQ-2239: counts the side panel's hides and shows, each fitting the graph to its canvas again.
+  const [refit, setRefit] = useState(0);
   const move = (kind: CameraCommand["kind"], target: string | null) =>
     setCommand((c) => ({ kind, target, seq: c == null ? 1 : c.seq + 1 }));
 
@@ -677,6 +680,7 @@ export function GraphExplorer({
         grid: { value: grid, onChange: setGrid },
       }}
       bare={snippet}
+      refit={refit}
     />
   );
 
@@ -900,22 +904,30 @@ export function GraphExplorer({
       </Group>
       <div className="p3d-body">
         {stage}
-        <GraphDetail
-          graph={drawn}
-          data={data}
-          selected={selected}
-          setHover={setHover}
-          expanded={expanded}
-          // In 2D a table's unbound columns fold into one node, whatever the scope.
-          folds={scope.foldColumns || flat}
-          flat={flat}
-          toggleExpanded={toggleExpanded}
-          onFocus={(id) => {
-            setRotate(false);
-            move("focus", id);
-          }}
-          testId={testId}
-        />
+        {/* REQ-2239: hidden, the canvas takes the full width and the graph is fitted to it again
+         * (the lanes' graph follows its canvas's width itself). */}
+        <SidePanel
+          view={settingsKey.kind}
+          onToggle={() => setRefit((n) => n + 1)}
+          testId={`${testId}-side-panel`}
+        >
+          <GraphDetail
+            graph={drawn}
+            data={data}
+            selected={selected}
+            setHover={setHover}
+            expanded={expanded}
+            // In 2D a table's unbound columns fold into one node, whatever the scope.
+            folds={scope.foldColumns || flat}
+            flat={flat}
+            toggleExpanded={toggleExpanded}
+            onFocus={(id) => {
+              setRotate(false);
+              move("focus", id);
+            }}
+            testId={testId}
+          />
+        </SidePanel>
       </div>
     </div>
   );
