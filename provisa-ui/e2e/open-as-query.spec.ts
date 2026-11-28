@@ -205,6 +205,46 @@ test.describe("Open as query", () => {
       expect(said, `edge ${e.relType}`).toContain(e.relType);
   });
 
+  test("its SPARQL, written from the view's own Cypher, run on the SPARQL page, answers its terms and links", async ({
+    page,
+  }) => {
+    // REQ-2136 (maintainer 2026-11-28): the view opens as SPARQL wherever it opens as its Cypher.
+    const viewed = await filteredView(page);
+    const terms = (
+      viewed.data as { _terms: { id: number; edgesOut?: { relType: string }[] | null }[] }
+    )._terms;
+
+    await page.getByTestId("ontology-open-as-query").click();
+    const sparql = page.getByTestId("ontology-open-as-sparql");
+    await expect(sparql, "the view's Cypher is written as SPARQL").toBeEnabled({
+      timeout: 60_000,
+    });
+    await sparql.click();
+    await page.waitForURL("**/sparql", { timeout: 60_000 });
+
+    const asked = page.waitForRequest(
+      (r: Request) => new URL(r.url()).pathname === "/data/sparql" && r.method() === "POST",
+      { timeout: 60_000 },
+    );
+    await page.locator(".graph-run-btn").click();
+    const response = await (await asked).response();
+    expect(response?.status(), "the SPARQL is answered").toBe(200);
+    const body = (await response?.json()) as {
+      head: { vars: string[] };
+      results: { bindings: Record<string, { value: string }>[] };
+    };
+    expect(body.head.vars).toEqual(["a", "r", "b"]);
+    // The same graph: a subject per term the view read, and every edge type it drew between them.
+    // A term's subject IRI ends with its key.
+    const subjects = new Set(body.results.bindings.map((b) => b.a.value.split("/").pop()));
+    for (const t of terms) expect(subjects, `term ${t.id}`).toContain(String(t.id));
+    const types = new Set(
+      body.results.bindings.flatMap((b) => (b.r ? [b.r.value.split("/").pop()] : [])),
+    );
+    for (const e of terms.flatMap((t) => t.edgesOut ?? []))
+      expect(types, `edge ${e.relType}`).toContain(e.relType);
+  });
+
   test("its SQL opens formatted in a fresh SQL Explorer tab and runs at once", async ({ page }) => {
     await filteredView(page);
 
