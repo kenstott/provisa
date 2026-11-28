@@ -11,12 +11,13 @@
 // REQ-1984 (amended 2026-11-24): a code source's dialog links the reference of the language chosen,
 // opened in the in-app Docs page at that language's section. In the read view and the edit form alike.
 
-import { Anchor, Input } from "@mantine/core";
+import { Input } from "@mantine/core";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { FormField } from "../../components/form/FormLayout";
 import { SOURCE_TYPES } from "./constants";
-import { codeReferenceHref } from "./codeSource";
+import { DocsLink } from "../../components/DocsLink";
+import { codeReferenceTarget } from "./codeSource";
 
 type Props = { label: string; type: string };
 
@@ -28,15 +29,11 @@ function languageOf(type: string): string {
 
 function link(p: Props, t: TFunction) {
   return (
-    // A new tab: the link sits inside the source dialog, and following it in place would close it.
-    <Anchor
-      href={codeReferenceHref(p.type)}
-      target="_blank"
-      rel="noopener noreferrer"
-      data-testid="code-reference-link"
-    >
+    // A new tab, as every docs link: the link sits inside the source dialog, and following it in
+    // place would close it.
+    <DocsLink target={codeReferenceTarget(p.type)} size="md" testId="code-reference-link">
       {t("codeSourceFields.referenceLink", { language: languageOf(p.type) })}
-    </Anchor>
+    </DocsLink>
   );
 }
 

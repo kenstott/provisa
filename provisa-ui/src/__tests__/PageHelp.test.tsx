@@ -22,7 +22,7 @@ function renderHelp() {
       paragraphs={["First.", "Second."]}
       ariaLabel="About this page"
       testId="page-help"
-      docs={{ href: "/docs?page=sources/#all-sources", label: "Read the documentation" }}
+      docs="sources/#all-sources"
     />,
   );
 }
@@ -46,12 +46,14 @@ describe("PageHelp", () => {
     expect(screen.getByTestId("page-help")).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("links the page's documentation in the app's Docs page", async () => {
+  it("links the page's documentation in the app's Docs page, in a new tab", async () => {
     renderHelp();
     fireEvent.click(screen.getByTestId("page-help"));
     const link = await screen.findByTestId("page-help-docs");
     expect(link).toHaveTextContent("Read the documentation");
     expect(link).toHaveAttribute("href", "/docs?page=sources/#all-sources");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("closes on Escape", async () => {

@@ -16,6 +16,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Anchor, Button, Checkbox, Group, Stack, Text, VisuallyHidden } from "@mantine/core";
+import { DocsLink } from "../DocsLink";
 import { ModalLayout } from "../modal/ModalLayout";
 import { FormFooter } from "../form/FormLayout";
 import { Tip } from "../Tip";
@@ -49,18 +50,12 @@ export function RelTypeOptionView({ value, label }: { value: string; label: stri
 export function GroundingGuideLink({ testId, children }: { testId: string; children?: ReactNode }) {
   const { t } = useTranslation();
   return (
-    <Anchor
-      href={GROUNDING_GUIDE_URL}
-      target="_blank"
-      rel="noreferrer"
-      size="xs"
-      data-testid={testId}
-    >
+    <DocsLink href={GROUNDING_GUIDE_URL} testId={testId}>
       <Group gap={4} wrap="nowrap" component="span">
         <BookOpen size={12} aria-hidden />
         {children ?? t("glossaryTab.groundingGuide")}
       </Group>
-    </Anchor>
+    </DocsLink>
   );
 }
 

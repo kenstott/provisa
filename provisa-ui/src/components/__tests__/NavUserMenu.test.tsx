@@ -109,10 +109,13 @@ describe("Admin and Docs in the user menu", () => {
     expect(divider!.compareDocumentPosition(admin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("opens the Docs page from the menu", async () => {
+  it("opens the Docs page from the menu, in a new tab", async () => {
     render(<NavBar />);
     await openUserMenu();
-    expect(screen.getByTestId("navbar-docs").closest("a")).toHaveAttribute("href", "/docs");
+    const link = screen.getByTestId("navbar-docs").closest("a");
+    expect(link).toHaveAttribute("href", "/docs");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("offers Admin to a member who holds no admin right, for the pages every member opens", async () => {

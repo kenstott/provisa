@@ -10,8 +10,7 @@
 
 import type { ComponentProps } from "react";
 import { Stack, Text } from "@mantine/core";
-import { useTranslation } from "react-i18next";
-import { docsHref, type DocsTarget } from "./docsTarget";
+import type { DocsTarget } from "./docsTarget";
 import { PageHelp } from "./PageHelp";
 import { TipSurface } from "./Tip";
 
@@ -45,7 +44,6 @@ export function HelpBubble({
   target,
   docs,
 }: HelpBubbleProps) {
-  const { t } = useTranslation();
   if (target === undefined) {
     return (
       <PageHelp
@@ -53,7 +51,7 @@ export function HelpBubble({
         paragraphs={paragraphs}
         ariaLabel={ariaLabel}
         testId={testId}
-        docs={{ href: docsHref(docs), label: t("pageHelp.docsLink") }}
+        docs={docs}
       />
     );
   }

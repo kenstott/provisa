@@ -392,7 +392,15 @@ export function NavBar() {
                   {t("navBar.groupAdmin")}
                 </Menu.Item>
               )}
-              <Menu.Item component={NavLink} to="/docs" data-testid="navbar-docs">
+              {/* A new tab, as every docs link (components/DocsLink.tsx): a menu item draws its own
+                  anchor, so it carries the same target and rel. */}
+              <Menu.Item
+                component="a"
+                href="/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="navbar-docs"
+              >
                 {t("navBar.docs")}
               </Menu.Item>
               {authEnabled && (
