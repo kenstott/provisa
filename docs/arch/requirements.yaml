@@ -37486,7 +37486,7 @@
     rows in/out against the command''s declared input/output dataset schema (fail-loud). Prerequisite: a canonical per-dataset contract: one or more scalar (column_value) args plus one or more TYPED input
     datasets (result_set/table_ref args, each carrying an ordered relational field-list) and exactly one
     TYPED output dataset; canonical field-list is the source of truth (single GraphQL-scalar vocabulary),
-    with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out), not stored truth.'
+    with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out), not stored truth. (Amended 2026-11-25 by the maintainer. A command''''s output dataset columns carry the same governance properties as a table''''s columns, namely visibility, masking, tags, glossary terms and classification, a description, and the SQL alias consumers query by, so a policy keyed on a tag or a classification reaches them. They carry none of the stored-data settings, so no fake or synthetic data (a command''''s output comes from calling its service, and a test environment calls that environment''''s service), no physical name and no column cache setting. The command page shows them on a Columns tab of their own beside Command and Bindings.)'
   use_case: A steward composes a governed external transform directly in ordinary SQL joined against federated
     tables, on any surface. Because the command declares and validates its input/output dataset columns, column-level lineage can close across the opaque RPC boundary via taint-closure splicing
     at the function node.
@@ -91563,7 +91563,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     COLUMNS:) A contract holds no columns of its own and its editor has no column selection, superseding
     the 2026-10-30 text that a contract declares its columns. Each saved version snapshots its member table''s
     columns, and a version''s field differences compare snapshots, so a field removed or renamed, a type
-    changed incompatibly or a field made required is still marked breaking (maintainer 2026-11-08).'
+    changed incompatibly or a field made required is still marked breaking (maintainer 2026-11-08). (Amended 2026-11-25 by the maintainer. A data product''s consumers see each column by the name they query it by, which is its SQL alias where one is set and otherwise its column name; the contract, its preview and every consumer-facing view of the product show that one name and never the physical column name or a separate SQL alias column. Stewards'' table pages keep both.)'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -98489,3 +98489,29 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When the operator opens the Spark source
 
     Then the function is callable in a query and the model scores rows of a governed table'
+- id: REQ-2277
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: admin-console-design
+  priority: MUST
+  type: constraint
+  description: 'Maintainer 2026-11-25. Provisa''s UI is dense like a cloud console or an IDE and is held to
+    these rules, checked by the ui-audit skill. (1) Two kinds of page. Object management pages (sources,
+    tables, relationships, roles, security, commands, settings, admin) use standard components only, one shared
+    page anatomy (a header with the object''s name, state and actions over the same kinds of tabs) and the
+    standard forms. Work surfaces may lay themselves out for their purpose, and only they may carry a bespoke
+    control, and only for what is the surface''s purpose (a canvas, a graph, a terrain plot, a map); filters,
+    pickers, forms, buttons and errors on them are the standard ones. The work surfaces are Explore, the
+    ontology and graph views, data products, dashboard-like pages and the query editors; adding a page to this
+    list is an amendment of this requirement. (2) Forms follow the standards: the shared form layout, required
+    fields marked and checked on submit rather than by disabling the action, and an error shown where the
+    person acts, never as a page banner for something they did not do; something true of a whole list is
+    stated once above it, not on every row. (3) Navigation is at most two levels deep. (4) Every screen has a
+    deep link, and so does every significant dialog, one that shows an object''s detail, holds a multi-step
+    task or is worth sharing (a contract, a profile run, a role''s effective permissions, a create wizard);
+    confirmations, pickers and one-field prompts have none. A deep link survives a reload and opens in a new
+    tab with the same state. (5) Polly reaches every screen and every significant dialog, through its deep
+    link or by clicking through from a screen she reaches.'
+

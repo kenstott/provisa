@@ -43,6 +43,11 @@ def _quoted(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
+#: The dialects that read a cast of a text that is no number as 0 (MySQL's family, SQLite) or NULL
+#: (Hive, and Spark and Databricks outside ANSI mode): ``refused`` answers there instead of raising.
+CASTS_UNCHECKED = frozenset({"mysql", "singlestore", "sqlite", "spark", "databricks", "hive"})
+
+
 def refused(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
     """PostgreSQL's error ``sqlstate`` with the SQL text ``message``, as a value of ``sql_type``:
     the cast of a text that is no number, which any dialect that checks a cast raises, and which

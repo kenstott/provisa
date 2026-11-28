@@ -37,7 +37,8 @@ from provisa.core.pg_error import END, MARK
 from provisa.transpiler import pg_forms_hash as hashing
 from provisa.transpiler import pg_type_literals as literals
 from provisa.transpiler.pg_forms_json import jsonb_text
-from provisa.transpiler.pg_forms_types import REFUSED, refused
+from provisa.transpiler.metadata_server_forms import RAISE_DIALECTS, SERVER_FORM_RAISE
+from provisa.transpiler.pg_forms_types import CASTS_UNCHECKED, REFUSED, refused
 
 Forms = dict[frozenset[str], str]
 Row = tuple[str, tuple[str, ...], Forms]
@@ -1455,18 +1456,18 @@ def _said_number(number: int, sql_type: str) -> exp.Expr:
     return exp.Cast(this=written, to=exp.DataType.build(sql_type, dialect="postgres"))
 
 
-def _said_refusal(refusal: literals.Refused) -> exp.Expr:
-    """PostgreSQL's error raised on every engine via provisa_raise (REQ-2236: never a wrong answer).
-
-    provisa_raise carries the SQLSTATE and message through each engine's raise mechanism
-    (DuckDB: error(), Trino: fail(), ClickHouse: throwIf()) and raises FunctionRefused on
-    MySQL-family dialects — a real error instead of CAST(CAST(text AS SIGNED) AS CHAR)
-    silently returning '0'."""
+def _said_refusal(refusal: literals.Refused, dialect: str | None) -> exp.Expr:
+    """An expression that raises PostgreSQL's error, whatever type the call would have answered
+    (REQ-2236: never a wrong answer). On an engine whose dialect has provisa_raise, that; on one
+    whose cast of a text that is no number answers 0 or NULL, provisa_raise too, which that dialect
+    refuses by name. Elsewhere, PostgreSQL's pass-through engines among them, provisa_raise may be
+    no function: the cast of a text that is no number raises it, and pg_error.from_engine reads it."""
     quoted = "'" + refusal.message.replace("'", "''") + "'"
-    return sqlglot.parse_one(
-        f"provisa_raise('{refusal.sqlstate}', {quoted})",
-        read="postgres",
-    )
+    if dialect in RAISE_DIALECTS or dialect in CASTS_UNCHECKED:
+        raised = f"{SERVER_FORM_RAISE}('{refusal.sqlstate}', {quoted})"
+    else:
+        raised = refused(refusal.sqlstate, quoted, "TEXT")
+    return sqlglot.parse_one(raised, read="postgres")
 
 
 def _array_kind(value: exp.Expr) -> str | None:
@@ -1853,12 +1854,13 @@ def _infinite_unheld(said: exp.Expr, dialect: str | None) -> bool:
     return infinite and dialect not in (None, "duckdb", "postgres")
 
 
-def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
-    """``_fold_row``, with PostgreSQL's refusal of a literal as an expression that raises it."""
+def _folded(name: str, arguments: list[exp.Expr], dialect: str | None) -> exp.Expr | None:
+    """``_fold_row``, with PostgreSQL's refusal of a literal as an expression that raises it on
+    ``dialect``."""
     try:
         return _fold_row(name, arguments)
     except literals.Refused as refusal:
-        return _said_refusal(refusal)
+        return _said_refusal(refusal, dialect)
 
 
 #: The dialects these forms are written for (``ENGINES``; None is DuckDB's), whose literal of a
@@ -1866,7 +1868,7 @@ def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
 _FORMED = frozenset({None, *(d for e in ENGINES for d in e.dialects)})
 
 
-def _edge_folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
+def _edge_folded(name: str, arguments: list[exp.Expr], dialect: str | None) -> exp.Expr | None:
     """``_edge_of_clock_or_era`` of a call's literal, with PostgreSQL's refusal of a value past its
     type as an expression that raises it."""
     text = _literal_text(arguments[0]) if arguments else None
@@ -1875,7 +1877,7 @@ def _edge_folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
     try:
         return _edge_of_clock_or_era(name, text, arguments)
     except literals.Refused as refusal:
-        return _said_refusal(refusal)
+        return _said_refusal(refusal, dialect)
 
 
 def _record_text(arguments: list[exp.Expr]) -> exp.Expr | None:
@@ -1928,8 +1930,8 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
                 target.set("expressions", [exp.Literal.string("")])
                 return node
             return exp.alias_(said, name) if in_select else said
-        folded = _edge_folded(name, arguments) if dialect in _FORMED else None
-        folded = _folded(name, arguments) if folded is None else folded
+        folded = _edge_folded(name, arguments, dialect) if dialect in _FORMED else None
+        folded = _folded(name, arguments, dialect) if folded is None else folded
         if folded is not None and name == "interval_in":
             if _infinite_unheld(folded, dialect):
                 # pgwire has no interval value of it: the call of the text it reads as, for the
