@@ -1106,9 +1106,17 @@ def convert_metadata(
         elif provider == "oauth" or auth_env.get("JWK_URL"):
             auth.provider = "oauth"
             auth.oauth = {"jwk_url": auth_env["JWK_URL"]}
-        # Admin secret -> superuser role
+        # REQ-1264: Hasura's admin secret is a shared static credential. Provisa has no config
+        # account to carry it into: administration is an org_admin user's, and a client without a
+        # browser presents that user's personal access token (REQ-1263). The secret is not written
+        # anywhere; the report says what replaces it.
         if auth_env.get("HASURA_GRAPHQL_ADMIN_SECRET"):
-            auth.superuser = {"secret": auth_env["HASURA_GRAPHQL_ADMIN_SECRET"]}
+            collector.map(
+                "auth",
+                "HASURA_GRAPHQL_ADMIN_SECRET",
+                "administration is an org_admin user's, not a shared secret; a client without a "
+                "browser presents an org_admin's personal access token in its place",
+            )
         # Claims map -> role_mapping entries
         claims_map_raw = auth_env.get("CLAIMS_MAP")
         if claims_map_raw:

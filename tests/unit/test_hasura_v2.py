@@ -715,14 +715,20 @@ class TestMapper:
         assert config.auth.oauth is not None
         assert config.auth.oauth["jwk_url"] == "https://auth.example.com/.well-known/jwks.json"
 
-    def test_auth_env_admin_secret_sets_superuser(self):
+    def test_auth_env_admin_secret_maps_to_org_admin_not_a_config_account(self):
+        # REQ-1264: no config account carries the admin secret; the report names its replacement.
         metadata = self._build_metadata()
+        collector = WarningCollector()
         config = convert_metadata(
             metadata,
+            collector,
             auth_env={"HASURA_GRAPHQL_ADMIN_SECRET": "s3cret"},
         )
-        assert config.auth.superuser is not None
-        assert config.auth.superuser["secret"] == "s3cret"
+        assert "s3cret" not in config.model_dump_json()
+        mapped = [i for i in collector.mapped if i.item == "HASURA_GRAPHQL_ADMIN_SECRET"]
+        assert len(mapped) == 1
+        assert "org_admin" in mapped[0].detail
+        assert "personal access token" in mapped[0].detail
 
     def test_auth_env_claims_map_sets_role_mapping(self):
         import json

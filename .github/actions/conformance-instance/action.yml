@@ -2,12 +2,15 @@ name: Conformance instance
 description: >-
   The Provisa instance every conformance job tests (REQ-2167): the PostgreSQL fixture seeded, the
   model written by scripts/conformance/pgwire_catalog_types.py, the embedded control plane and
-  `uvicorn main:app` started natively on the DuckDB engine, the model loaded by PUT /admin/config
-  as the break-glass account, the job user created (org_admin by the model's default assignment)
-  and its session token put in the job's env as CONFORMANCE_AUTHORIZATION ("Bearer ..."), which
-  every runner presents. Reads the job's env: PROVISA_API_PORT, PROVISA_PGWIRE_PORT,
-  CONFORMANCE_PG_HOST/PORT/DATABASE/USER/PASSWORD, PROVISA_SUPERUSER_USERNAME/PASSWORD,
-  CONFORMANCE_USER, CONFORMANCE_PASSWORD and CONFORMANCE_JWT_SECRET. The instance's home is
+  `uvicorn main:app` started natively on the DuckDB engine, the instance's org_admin seeded by
+  first-run setup (scripts/seed_org_admin.py, REQ-1264) and the model loaded by PUT /admin/config
+  as it, the job user created (org_admin by the model's default assignment) and its session token
+  put in the job's env as CONFORMANCE_AUTHORIZATION ("Bearer ..."), which every runner presents.
+  The org_admin's name and its password, generated here, are put in the job's env as
+  CONFORMANCE_ADMIN_USER and CONFORMANCE_ADMIN_PASSWORD for the job's own administration steps.
+  Reads the job's env: PROVISA_API_PORT, PROVISA_PGWIRE_PORT,
+  CONFORMANCE_PG_HOST/PORT/DATABASE/USER/PASSWORD, CONFORMANCE_USER, CONFORMANCE_PASSWORD and
+  CONFORMANCE_JWT_SECRET. The instance's home is
   $RUNNER_TEMP/provisa (server.log, server.pid, control-pg). The engine is the one the job's env
   names ($PROVISA_ENGINE): the DuckDB engine unless it names another.
 inputs:
@@ -67,7 +70,9 @@ runs:
 
     # The model (scripts/conformance/pgwire_catalog_types.py provisa_config): domain conformance,
     # source conformance-pg over the PostgreSQL service, table types_fixture, its columns visible
-    # to org_admin; password auth (basic provider, SCRAM-SHA-256).
+    # to org_admin; password auth (basic provider, SCRAM-SHA-256). The server boots on the model
+    # without its auth section, so first-run setup seats the instance's org_admin (REQ-1264); the
+    # full model is then put as that administrator.
     - name: Start the Provisa instance
       shell: bash
       run: |
@@ -78,9 +83,15 @@ runs:
         if [ -n "${{ inputs.extra-relationships }}" ]; then extra+=(--extra-relationships "${{ inputs.extra-relationships }}"); fi
         if [ -n "${{ inputs.extra-access }}" ]; then extra+=(--extra-access "${{ inputs.extra-access }}"); fi
         .venv/bin/python scripts/conformance/pgwire_catalog_types.py config \
-          --out "$home/provisa.yaml" --pg-port "$CONFORMANCE_PG_PORT" \
+          --out "$home/model.yaml" --pg-port "$CONFORMANCE_PG_PORT" \
           --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
           "${extra[@]}"
+        .venv/bin/python scripts/seed_org_admin.py boot-config --model "$home/model.yaml" --out "$home/provisa.yaml"
+        admin_user=conformance-admin
+        admin_password=$(python3 -c 'import os; print(os.urandom(24).hex())')
+        echo "::add-mask::$admin_password"
+        echo "CONFORMANCE_ADMIN_USER=$admin_user" >> "$GITHUB_ENV"
+        echo "CONFORMANCE_ADMIN_PASSWORD=$admin_password" >> "$GITHUB_ENV"
         cp_url="${{ inputs.control-plane-url }}"
         if [ -z "$cp_url" ]; then
           started=$(.venv/bin/python -m provisa.core.control_plane_pg start "$home/control-pg" --init-sql db/init.sql)
@@ -115,14 +126,11 @@ runs:
           sleep 2
         done
         curl -sf "http://127.0.0.1:$PROVISA_API_PORT/health" >/dev/null || { echo "::error::Provisa never answered /health"; tail -n 200 "$home/server.log"; exit 1; }
-        # The model, as global-setup.ts bootstraps each backend (PUT /admin/config).
-        su="$PROVISA_SUPERUSER_USERNAME:$PROVISA_SUPERUSER_PASSWORD"
-        status=$(curl -s -o "$home/config-response.txt" -w '%{http_code}' --retry 5 --retry-all-errors --retry-delay 3 \
-          -u "$su" -X PUT -H 'Content-Type: application/yaml' --data-binary @"$home/provisa.yaml" \
-          "http://127.0.0.1:$PROVISA_API_PORT/admin/config")
-        if [ "${status:0:1}" != "2" ]; then
-          echo "::error::PUT /admin/config answered $status"; cat "$home/config-response.txt"; tail -n 200 "$home/server.log"; exit 1
-        fi
+        # The instance's org_admin, seated by first-run setup, then the full model put as it.
+        SEED_ADMIN_PASSWORD="$admin_password" .venv/bin/python scripts/seed_org_admin.py seed \
+          --api "http://127.0.0.1:$PROVISA_API_PORT" --model "$home/model.yaml" --user "$admin_user" \
+          || { echo "::error::seeding the org_admin and loading the model failed"; tail -n 200 "$home/server.log"; exit 1; }
+        admin="$admin_user:$admin_password"
         # Warm (REQ-1882's readiness probe): the first statement is not paying for the warm-up.
         for _ in $(seq 1 ${{ inputs.boot-attempts }}); do
           curl -sf "http://127.0.0.1:$PROVISA_API_PORT/ready" >/dev/null && break
@@ -134,10 +142,10 @@ runs:
           sleep 2
         done
         (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null || { echo "::error::pgwire never listened on $PROVISA_PGWIRE_PORT"; tail -n 200 "$home/server.log"; exit 1; }
-        # The job user: created by the break-glass account, so its SCRAM verifier is written
+        # The job user: created by the instance's org_admin, so its SCRAM verifier is written
         # with it (REQ-1394); org_admin by the model's default assignment, unless the job's
         # extra-access assigns it roles of its own (given below, once it exists).
-        status=$(curl -s -o "$home/user-response.txt" -w '%{http_code}' -u "$su" \
+        status=$(curl -s -o "$home/user-response.txt" -w '%{http_code}' -u "$admin" \
           -X POST -H 'Content-Type: application/json' \
           --data "{\"username\": \"$CONFORMANCE_USER\", \"password\": \"$CONFORMANCE_PASSWORD\"}" \
           "http://127.0.0.1:$PROVISA_API_PORT/admin/users/")
@@ -150,7 +158,7 @@ runs:
           .venv/bin/python scripts/conformance/pgwire_catalog_types.py assignments \
             --extra-access "${{ inputs.extra-access }}" --user "$CONFORMANCE_USER" > "$home/assignments.jsonl"
           while IFS= read -r assignment; do
-            status=$(curl -s -o "$home/assignment-response.txt" -w '%{http_code}' -u "$su" \
+            status=$(curl -s -o "$home/assignment-response.txt" -w '%{http_code}' -u "$admin" \
               -X POST -H 'Content-Type: application/json' --data "$assignment" \
               "http://127.0.0.1:$PROVISA_API_PORT/admin/users/$user_id/assignments")
             if [ "${status:0:1}" != "2" ]; then
