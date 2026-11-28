@@ -71,6 +71,8 @@ MAXIMUM_RETRIES = 7
 _SERIAL_EPOCH = datetime(1899, 12, 30)
 _MS_PER_DAY = 86_400_000
 _INTEGERS = frozenset({"smallint", "integer", "bigint"})
+#: The IR type of a column whose numbers carry a Sheets date, time or date-time number format.
+_MOMENT_TYPES = {"DATE": "date", "TIME": "time", "DATE_TIME": "timestamp"}
 _FLOATS = frozenset({"float", "double"})
 
 
@@ -179,6 +181,26 @@ class SheetsApi:
         body = self._get("/values:batchGet", params)
         return [value_range.get("values", []) for value_range in body.get("valueRanges", [])]
 
+    def grid(self, a1: str) -> list[list[dict]]:
+        """Each cell of the range ``a1``, by row: its effective value and its number format's type.
+        A row's trailing empty cells, and the range's trailing empty rows, are left out."""
+        body = self._get(
+            "",
+            {
+                "ranges": a1,
+                "includeGridData": "true",
+                "fields": (
+                    "sheets.data.rowData.values(effectiveValue,effectiveFormat.numberFormat.type)"
+                ),
+            },
+        )
+        return [
+            row.get("values", [])
+            for sheet in body.get("sheets", [])
+            for data in sheet.get("data", [])
+            for row in data.get("rowData", [])
+        ]
+
 
 def _reason(answer: httpx.Response) -> str:
     try:
@@ -191,15 +213,19 @@ def _reason(answer: httpx.Response) -> str:
 def sheet_of(sheets: list[dict], source: Any, table: Any) -> dict:
     """The sheet ``table`` reads: the one titled as the table, or the first sheet for the table
     named after the source. Any other table names a sheet the spreadsheet does not have."""
+    return _sheet_named(sheets, source, table.table_name)
+
+
+def _sheet_named(sheets: list[dict], source: Any, table_name: str) -> dict:
     for sheet in sheets:
-        if sheet["title"] == table.table_name:
+        if sheet["title"] == table_name:
             return sheet
-    if table.table_name == source.id and sheets:
+    if table_name == source.id and sheets:
         return min(sheets, key=lambda sheet: sheet.get("index", 0))
     titles = ", ".join(repr(sheet["title"]) for sheet in sheets)
     raise SheetsReadError(
-        f"Table {source.id}.{table.table_name}: spreadsheet {source.database} has no sheet named "
-        f"{table.table_name!r} (its sheets: {titles})"
+        f"Table {source.id}.{table_name}: spreadsheet {source.database} has no sheet named "
+        f"{table_name!r} (its sheets: {titles})"
     )
 
 
@@ -288,6 +314,77 @@ def row_batches(
             rows = []
     if rows:
         yield rows
+
+
+def _cell_type(grid_cell: dict) -> str | None:
+    """The IR type one cell's value is, or None for an empty cell."""
+    value = grid_cell.get("effectiveValue") or {}
+    if "boolValue" in value:
+        return "boolean"
+    if "numberValue" in value:
+        number_format = (grid_cell.get("effectiveFormat") or {}).get("numberFormat") or {}
+        moment = _MOMENT_TYPES.get(number_format.get("type", ""))
+        if moment is not None:
+            return moment
+        return "bigint" if float(value["numberValue"]).is_integer() else "double"
+    return "text" if value else None  # a string, or an error the cell shows as text
+
+
+def _column_type(types: set[str]) -> str:
+    """The IR type that holds every value of a column whose cells are of ``types``: integers with
+    fractions are doubles, dates with date-times are timestamps, and any other mix is text."""
+    if len(types) == 1:
+        return next(iter(types))
+    if types == {"bigint", "double"}:
+        return "double"
+    if types == {"date", "timestamp"}:
+        return "timestamp"
+    return "text"  # no value at all, or values no one type holds
+
+
+def _header_name(grid_cell: dict) -> str:
+    value = grid_cell.get("effectiveValue") or {}
+    if "numberValue" in value:
+        number = float(value["numberValue"])
+        return str(int(number)) if number.is_integer() else str(number)
+    if "boolValue" in value:
+        return "TRUE" if value["boolValue"] else "FALSE"
+    return str(value.get("stringValue", ""))
+
+
+def sheet_columns(api: SheetsApi, source: Any, table_name: str) -> list[tuple[str, str]]:
+    """The columns of the sheet ``table_name`` reads, as (name, IR type): each named by its header
+    cell and typed by every value under it, so a landing reads each cell as its column holds it
+    (``cell``). A number formatted as a date, a time or a date-time is that moment. A column with
+    no header cell is no column of the table. The whole grid is read in one request."""
+    where = f"Table {source.id}.{table_name}"
+    sheet = _sheet_named(api.sheets(), source, table_name)
+    grid = sheet.get("gridProperties", {})
+    last_row = int(grid.get("rowCount", 0))
+    width = int(grid.get("columnCount", 0))
+    if last_row == 0 or width == 0:
+        raise SheetsReadError(f"{where}: sheet {sheet['title']!r} is empty, with no header row")
+    rows = api.grid(_a1(sheet["title"], 1, last_row, width))
+    header = [_header_name(c) for c in rows[0]] if rows else []
+    if not any(header):
+        raise SheetsReadError(f"{where}: sheet {sheet['title']!r} has no header row")
+    columns: list[tuple[str, str]] = []
+    for i, name in enumerate(header):
+        if not name:
+            continue
+        types = {t for row in rows[1:] if i < len(row) and (t := _cell_type(row[i])) is not None}
+        columns.append((name, _column_type(types)))
+    return columns
+
+
+def read_sheet_columns(source: Any, table_name: str) -> list[tuple[str, str]]:
+    """``sheet_columns`` of ``source``'s spreadsheet, signed in with its service account key."""
+    from provisa.api_source.oauth_grants import service_account_token
+
+    key = service_account_key(source)
+    with httpx.Client() as client:
+        api = SheetsApi(_spreadsheet(source), lambda: service_account_token(key, [SCOPE]), client)
+        return sheet_columns(api, source, table_name)
 
 
 def _registered_columns(table: Any) -> list[tuple[str, str]]:

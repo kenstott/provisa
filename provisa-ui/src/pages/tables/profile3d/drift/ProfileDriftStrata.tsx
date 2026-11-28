@@ -141,7 +141,7 @@ function DriftStage({
       error={error}
       canvasLabel={t("profileStrata.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
-      exportable={scene}
+      scene={scene}
       exportName={s.exportName}
       testId="strata-stage"
       controls={{

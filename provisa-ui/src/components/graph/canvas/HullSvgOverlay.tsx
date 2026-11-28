@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { Ref, MutableRefObject } from "react";
+import type { MutableRefObject } from "react";
 import { clusterColor } from "../graph-model";
 import { cidToId } from "../graph-clusters";
 import type { ClusterLevel } from "../graph-clusters";
@@ -16,7 +16,6 @@ import type { CyInstance } from "../cytoscape-types";
 
 interface HullSvgOverlayProps {
   hullCircles: Array<{ cid: string; x: number; y: number; rx: number; ry: number }>;
-  hullSvgRef?: Ref<SVGSVGElement>;
   clusterLevelRef: MutableRefObject<ClusterLevel>;
   cyRef: MutableRefObject<CyInstance | null>;
   hullDragRef: MutableRefObject<{
@@ -31,7 +30,6 @@ interface HullSvgOverlayProps {
 
 export function HullSvgOverlay({
   hullCircles,
-  hullSvgRef,
   clusterLevelRef,
   cyRef,
   hullDragRef,
@@ -40,7 +38,6 @@ export function HullSvgOverlay({
   if (hullCircles.length === 0) return null;
   return (
     <svg
-      ref={hullSvgRef}
       className="gf-hulls"
       style={{
         position: "absolute",

@@ -14,6 +14,9 @@
 // each held to RELATION_ROW_CAP rows. A table_ref names a table its service reads itself, so it is
 // given only by a table, as its SQL name (provisa/executor/function_dispatch.py refuses a query or
 // rows for one).
+// A result_set that declares its columns is given only by a table that has every one of them, by
+// name, with a type that reads as the declared type (fittingTables); a table_ref, or a result_set
+// that declares none, takes any table the role reads.
 
 import type { ActionArg } from "../../api/actions";
 import { quoteIdent, tableSqlRef, type SqlNamedTable } from "../../naming";
@@ -27,6 +30,55 @@ export type RelationSource = "table" | "query" | "rows";
 /** The ways ``arg`` is given: a table_ref by a table only. */
 export const relationSources = (arg: ActionArg): RelationSource[] =>
   arg.argKind === "table_ref" ? ["table"] : ["table", "query", "rows"];
+
+/** A table a relation argument may be given by: its SQL name, and its columns as the catalog gives
+ * them (the SQL name a statement reads each by, and its IR type, null where none is recorded). */
+export interface ArgTable extends SqlNamedTable {
+  columns: readonly { computedSqlAlias: string; dataType: string | null }[];
+}
+
+const INTEGER = new Set(["integer", "int", "bigint", "smallint", "int2", "int4", "int8"]);
+const DECIMAL = new Set(["double", "float", "real", "numeric", "decimal", "float4", "float8"]);
+const BOOLEAN = new Set(["boolean", "bool"]);
+
+/** A type's name without its case or its parameters: ``NUMERIC(10,2)`` is ``numeric``. */
+const baseType = (type: string) =>
+  type
+    .toLowerCase()
+    .replace(/\(.*\)$/, "")
+    .trim();
+
+/** Whether a value of type ``have`` reads as the declared type ``want``: an integer reads as a
+ * decimal too; any other type reads only as itself. */
+export function readsAs(have: string, want: string): boolean {
+  const h = baseType(have);
+  const w = baseType(want);
+  if (INTEGER.has(w)) return INTEGER.has(h);
+  if (DECIMAL.has(w)) return INTEGER.has(h) || DECIMAL.has(h);
+  if (BOOLEAN.has(w)) return BOOLEAN.has(h);
+  return h === w;
+}
+
+/** The tables ``arg`` may be given by: for a result_set that declares its columns, those that have
+ * every declared column by name (as the catalog spells it) with a type that reads as the declared
+ * type; for any other relation argument, every table. */
+export function fittingTables<T extends ArgTable>(
+  arg: ActionArg,
+  tables: readonly T[],
+): readonly T[] {
+  const declared = arg.argKind === "result_set" ? arg.columns : undefined;
+  if (!declared || declared.length === 0) return tables;
+  return tables.filter((tb) =>
+    declared.every((want) =>
+      tb.columns.some(
+        (col) =>
+          col.computedSqlAlias === want.name &&
+          col.dataType !== null &&
+          readsAs(col.dataType, want.type),
+      ),
+    ),
+  );
+}
 
 /** A table the role reads, given for ``arg``. */
 export function tableValue(arg: ActionArg, table: SqlNamedTable): ArgValue {
@@ -53,21 +105,18 @@ export function queryValue(text: string): ArgValue {
 /** Why pasted rows are refused. */
 export type RowsRefusal = "notRows" | "overCap";
 
-const INTEGER = new Set(["integer", "int", "bigint", "smallint", "int2", "int4", "int8"]);
-const DECIMAL = new Set(["double", "float", "real", "numeric", "decimal", "float4", "float8"]);
-
 /** A cell that does not read as its declared column's type. */
 class CellRefused extends Error {}
 
 /** A CSV cell as its declared column's type reads it; a column not declared keeps its text. */
 function typedCell(text: string, type: string | undefined): unknown {
-  const t = (type ?? "").toLowerCase();
+  const t = baseType(type ?? "");
   if (INTEGER.has(t) || DECIMAL.has(t)) {
     const n = Number(text);
     if (text === "" || Number.isNaN(n)) throw new CellRefused(text);
     return n;
   }
-  if (t === "boolean" || t === "bool") {
+  if (BOOLEAN.has(t)) {
     if (text !== "true" && text !== "false") throw new CellRefused(text);
     return text === "true";
   }

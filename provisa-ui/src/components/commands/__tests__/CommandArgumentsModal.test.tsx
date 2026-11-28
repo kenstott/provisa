@@ -19,22 +19,33 @@ import { fireEvent, render, screen, within } from "../../../test-utils/render";
 import type { ActionArg } from "../../../api/actions";
 import { CommandArgumentsModal } from "../CommandArgumentsModal";
 import type { CommandCall } from "../commandQueries";
-import { RELATION_ROW_CAP } from "../relationArg";
+import { RELATION_ROW_CAP, fittingTables, readsAs, type ArgTable } from "../relationArg";
 
-const ORDERS = { domainId: "sales", tableName: "orders", alias: null };
-const PEOPLE = { domainId: "hr", tableName: "people", alias: "staff" };
+const col = (computedSqlAlias: string, dataType: string | null) => ({ computedSqlAlias, dataType });
+const ORDERS: ArgTable = {
+  domainId: "sales",
+  tableName: "orders",
+  alias: null,
+  columns: [col("id", "bigint"), col("region", "text"), col("total", "numeric(10,2)")],
+};
+const PEOPLE: ArgTable = {
+  domainId: "hr",
+  tableName: "people",
+  alias: "staff",
+  columns: [col("id", "integer"), col("name", "text")],
+};
 
 const input: ActionArg = { name: "input", type: "String", argKind: "result_set" };
 const factor: ActionArg = { name: "factor", type: "Float" };
 const note: ActionArg = { name: "note", type: "String", default: "none" };
 
-function open(call: CommandCall) {
+function open(call: CommandCall, tables: readonly ArgTable[] = [ORDERS, PEOPLE]) {
   const onOpen = vi.fn();
   render(
     <CommandArgumentsModal
       call={call}
       surface="sql"
-      tables={[ORDERS, PEOPLE]}
+      tables={tables}
       onOpen={onOpen}
       onClose={vi.fn()}
     />,
@@ -192,5 +203,110 @@ describe("the argument form", () => {
     expect(onOpen).toHaveBeenCalledWith({
       src: { kind: "relation", text: `"sales"."orders"`, rows: null },
     });
+  });
+
+  it("lists every table the role reads for a result_set that declares no columns", async () => {
+    open({ name: "enrich", kind: "query", arguments: [input] });
+    await source("input", "Table");
+    await userEvent.click(screen.getByTestId("command-arg-input-table"));
+    expect(await tableOptions()).toEqual(["sales.orders", "hr.staff"]);
+  });
+
+  it("lists only the tables that have every declared column, by name and type", async () => {
+    const typed: ActionArg = {
+      ...input,
+      columns: [
+        { name: "id", type: "integer" },
+        { name: "region", type: "text" },
+      ],
+    };
+    const onOpen = open({ name: "enrich_grpc_set", kind: "query", arguments: [typed] });
+    await source("input", "Table");
+    await userEvent.click(screen.getByTestId("command-arg-input-table"));
+    // hr.staff has no region column.
+    expect(await tableOptions()).toEqual(["sales.orders"]);
+    await userEvent.click(
+      await screen.findByRole("option", { name: "sales.orders", hidden: true }),
+    );
+    await press();
+    expect(onOpen.mock.calls[0][0].input.text).toBe(
+      `select "id", "region" from "sales"."orders" limit ${RELATION_ROW_CAP}`,
+    );
+  });
+
+  it("says no table fits and names the declared columns when none has them", async () => {
+    const typed: ActionArg = {
+      ...input,
+      columns: [
+        { name: "id", type: "integer" },
+        { name: "country", type: "text" },
+      ],
+    };
+    open({ name: "enrich", kind: "query", arguments: [typed] });
+    await source("input", "Table");
+    const picker = screen.getByTestId("command-arg-input-table");
+    expect(picker).toBeDisabled();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent(
+      "No table you can read has the columns id integer, country text",
+    );
+    // The written query and pasted rows are still offered.
+    await source("input", "Query");
+    expect(screen.getByTestId("command-arg-input-query")).toBeEnabled();
+  });
+
+  it("lists every table for a table_ref argument, whatever columns it declares", async () => {
+    const ref: ActionArg = {
+      name: "src",
+      type: "String",
+      argKind: "table_ref",
+      columns: [{ name: "country", type: "text" }],
+    };
+    open({ name: "load", kind: "query", arguments: [ref] });
+    await userEvent.click(screen.getByTestId("command-arg-src-table"));
+    expect(await tableOptions()).toEqual(["sales.orders", "hr.staff"]);
+  });
+});
+
+async function tableOptions(): Promise<string[]> {
+  const options = await screen.findAllByRole("option", { hidden: true });
+  return options.map((o) => o.textContent ?? "");
+}
+
+describe("the tables a result_set argument fits", () => {
+  const arg = (columns: { name: string; type: string }[]): ActionArg => ({
+    ...input,
+    columns,
+  });
+
+  it("matches a column by its name as the catalog spells it", () => {
+    expect(fittingTables(arg([{ name: "Region", type: "text" }]), [ORDERS])).toEqual([]);
+    expect(fittingTables(arg([{ name: "region", type: "text" }]), [ORDERS])).toEqual([ORDERS]);
+  });
+
+  it("matches a column whose type reads as the declared type", () => {
+    // An integer reads as an integer of any width, and as a decimal.
+    expect(fittingTables(arg([{ name: "id", type: "integer" }]), [ORDERS, PEOPLE])).toEqual([
+      ORDERS,
+      PEOPLE,
+    ]);
+    expect(fittingTables(arg([{ name: "id", type: "double" }]), [ORDERS])).toEqual([ORDERS]);
+    // A decimal does not read as an integer; text reads as neither.
+    expect(fittingTables(arg([{ name: "total", type: "integer" }]), [ORDERS])).toEqual([]);
+    expect(fittingTables(arg([{ name: "region", type: "integer" }]), [ORDERS])).toEqual([]);
+    expect(fittingTables(arg([{ name: "total", type: "numeric" }]), [ORDERS])).toEqual([ORDERS]);
+  });
+
+  it("does not fit a column whose type the catalog does not record", () => {
+    const untyped: ArgTable = { ...PEOPLE, columns: [col("id", null)] };
+    expect(fittingTables(arg([{ name: "id", type: "integer" }]), [untyped])).toEqual([]);
+  });
+
+  it("reads types without case or parameters", () => {
+    expect(readsAs("NUMERIC(12,4)", "decimal")).toBe(true);
+    expect(readsAs("BOOL", "boolean")).toBe(true);
+    expect(readsAs("text", "boolean")).toBe(false);
+    expect(readsAs("timestamp", "timestamp")).toBe(true);
+    expect(readsAs("date", "timestamp")).toBe(false);
   });
 });

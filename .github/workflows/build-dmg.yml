@@ -181,7 +181,7 @@ jobs:
 
       - name: Push the image the block names
         env:
-          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_PASSWORD: ${{ secrets.GHCR }}
         run: |
           set -euo pipefail
           uv run provisa connector push spark-connector-image \
@@ -209,3 +209,5 @@ jobs:
     with:
       version: ${{ inputs.version || github.ref_name }}
       publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
+    secrets:
+      GHCR: ${{ secrets.GHCR }}

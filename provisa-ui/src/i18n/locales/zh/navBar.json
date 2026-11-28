@@ -62,6 +62,7 @@
     "comingSoon": "{{label}} — 即将推出",
     "domainsToggle": "域（{{checked}}/{{total}}）",
     "domainsLabel": "域",
+    "domainsSystem": "系统",
     "tourResume": "继续引导教程",
     "tourMenu": "打开深入探索",
     "tourStart": "开始引导教程",

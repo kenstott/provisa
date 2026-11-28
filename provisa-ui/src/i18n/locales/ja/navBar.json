@@ -62,6 +62,7 @@
     "comingSoon": "{{label}} — 近日公開",
     "domainsToggle": "ドメイン（{{checked}}/{{total}}）",
     "domainsLabel": "ドメイン",
+    "domainsSystem": "システム",
     "tourResume": "ガイドツアーを再開",
     "tourMenu": "ディープダイブを開く",
     "tourStart": "ガイドツアーを開始",

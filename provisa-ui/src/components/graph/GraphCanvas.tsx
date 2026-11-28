@@ -46,6 +46,7 @@ import type {
 import cytoscape from "cytoscape";
 // Registers the graph library's extensions, once, as the graph component does.
 import "../provisa-graph/core";
+import "../provisa-graph/provisa-graph.css";
 import type { CanvasProps, NodeRingMenuState } from "./canvas/canvas-types";
 import { applyHighlight } from "./canvas/highlight";
 import {
@@ -91,11 +92,12 @@ export function GraphCanvas({
   onCyReady,
   clusterLevel,
   requestedView,
-  hullSvgRef,
+  exportName,
   note,
   highlight = null,
   onClearHighlight,
 }: CanvasProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   // The canvas's box with its controls: what the command bar's full screen puts full screen.
   const stageRef = useRef<HTMLDivElement>(null);
@@ -931,10 +933,16 @@ export function GraphCanvas({
       }}
     >
       <div ref={containerRef} className="gf-canvas" />
+      {/* REQ-2239 (amended 2026-11-27): every graph shows the pan and zoom hint, in the shared
+          graph's corner. Here the wheel zooms (cytoscape's own), so the hint says so. */}
+      <div className="pg-corner">
+        <div className="pg-hint" data-testid="graph-canvas-hint">
+          {t("profile3d.hintFlat")}
+        </div>
+      </div>
       {note}
       <HullSvgOverlay
         hullCircles={hullCircles}
-        hullSvgRef={hullSvgRef}
         clusterLevelRef={clusterLevelRef}
         cyRef={cyRef}
         hullDragRef={hullDragRef}
@@ -943,6 +951,8 @@ export function GraphCanvas({
       <ResultGraphControls
         cyRef={cyRef}
         stageRef={stageRef}
+        canvas={graphTokens(isDark).canvas}
+        exportName={exportName}
         layoutMode={layoutMode}
         toggleLayout={toggleLayout}
         nudgeHeldRef={nudgeHeldRef}

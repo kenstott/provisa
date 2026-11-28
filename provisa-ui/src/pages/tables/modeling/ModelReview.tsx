@@ -25,7 +25,7 @@ import {
 } from "../../../hooks/useAdminQueries";
 import { serverMessage } from "../../../i18n/serverMessage";
 import type { ListedTable } from "../../../types/admin";
-import { FieldGroup, FormEntry, FormField } from "../../../components/form/FormLayout";
+import { FieldGroup, FormEntry, FormField, FormFooter } from "../../../components/form/FormLayout";
 import {
   createPlan,
   targetName,
@@ -162,11 +162,15 @@ function CreatedView({ rows, onDone }: { rows: CreatedTable[]; onDone: () => voi
           </Text>
         </Group>
       ))}
-      <Group justify="flex-start">
-        <Button onClick={onDone} data-testid="wizard-done">
-          {t("modelingForm.done")}
-        </Button>
-      </Group>
+      {/* The wizard is over: Done is the one choice in the panel's command bar. */}
+      <FormFooter
+        panel
+        action={
+          <Button onClick={onDone} data-changes={false} data-testid="wizard-done">
+            {t("modelingForm.done")}
+          </Button>
+        }
+      />
     </PanelBody>
   );
 }
@@ -174,19 +178,21 @@ function CreatedView({ rows, onDone }: { rows: CreatedTable[]; onDone: () => voi
 export function ModelReview({
   plan,
   index,
+  progress,
   steps,
   onStep,
   onBack,
-  onCancel,
+  onClose,
   onDone,
   onCreated,
 }: {
   plan: ModelPlan;
   index: number;
+  progress: number;
   steps: readonly Step[];
   onStep: (index: number) => void;
   onBack: () => void;
-  onCancel: () => void;
+  onClose: () => void;
   onDone: () => void;
   /** Called once the plan has been created, whatever came of it: there is no going back. */
   onCreated: () => void;
@@ -246,6 +252,7 @@ export function ModelReview({
   return (
     <WizardStep
       index={index}
+      progress={progress}
       steps={steps}
       onStep={onStep}
       title={t("modelingWizard.review.title")}
@@ -307,13 +314,12 @@ export function ModelReview({
         </Text>
       </FormField>
       <WizardFooter
-        first={false}
-        nextLabel={t("modelingWizard.review.create")}
-        nextTestId="wizard-create"
+        primaryLabel={t("modelingWizard.review.create")}
+        primaryTestId="wizard-create"
         creates
-        onNext={() => void create()}
+        onPrimary={() => void create()}
         onBack={onBack}
-        onCancel={onCancel}
+        onClose={onClose}
         problem={problem}
         busy={busy}
       />

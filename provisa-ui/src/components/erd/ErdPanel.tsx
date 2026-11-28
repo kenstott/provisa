@@ -81,8 +81,7 @@ export function ErdPanel({
   }, [tables, checkedDomains]);
 
   const elements = useMemo(
-    () =>
-      buildErdElements(tables, relationships, domains, collapsedDomains, hiddenDomains, "all"),
+    () => buildErdElements(tables, relationships, domains, collapsedDomains, hiddenDomains, "all"),
     [tables, relationships, domains, collapsedDomains, hiddenDomains],
   );
   const graph = useMemo(() => erdGraph(elements, tables), [elements, tables]);
@@ -195,6 +194,7 @@ export function ErdPanel({
         placesRef={graphPlacesRef}
         onArrange={arrange}
         overlay={overlay}
+        hint={t("provisaGraph.hint")}
         header={
           <GraphOptionsBar
             testId="erd"

@@ -10,7 +10,9 @@
 
 // REQ-2239 (amended 2026-11-27): the network graph's (Cypher and SPARQL result) hover command bar is
 // the one every graph shares (GraphControls): zoom, fit, full screen and download, then its own
-// commands -- the layout toggle, the held re-layout and the edge length.
+// commands -- the layout toggle, the held re-layout and the edge length. Its downloads are the one
+// image export every graph uses (exportImage.ts): on the canvas colour, named after the view, with the
+// cluster hulls painted.
 
 import type { MutableRefObject, RefObject } from "react";
 import { Divider, Text } from "@mantine/core";
@@ -22,12 +24,16 @@ import { Tip } from "../../Tip";
 import { setStored } from "../../../lib/browserStorage";
 import { GraphControls } from "../../provisa-graph/GraphControls";
 import { CanvasButton, CONTROL_ICON } from "../../provisa-graph/CanvasControls";
-import { compositeGraphDownload, downloadGraphSvg } from "../graph-export";
+import { exportJpeg, exportPng, exportSvg, type GraphImage } from "../../provisa-graph/exportImage";
 
 interface ResultGraphControlsProps {
   cyRef: MutableRefObject<CyInstance | null>;
   /** The canvas's own box: what goes full screen. */
   stageRef: RefObject<HTMLDivElement | null>;
+  /** The canvas colour an image is drawn on. */
+  canvas: string;
+  /** The view's name, which a downloaded file takes. */
+  exportName: string;
   layoutMode: LayoutMode;
   toggleLayout: () => void;
   nudgeHeldRef: MutableRefObject<boolean>;
@@ -42,6 +48,8 @@ interface ResultGraphControlsProps {
 export function ResultGraphControls({
   cyRef,
   stageRef,
+  canvas,
+  exportName,
   layoutMode,
   toggleLayout,
   nudgeHeldRef,
@@ -55,10 +63,16 @@ export function ResultGraphControls({
   const { t } = useTranslation();
   // The cluster hulls drawn over the canvas (HullSvgOverlay), which an image export paints too; there
   // is no overlay while no cluster is drawn.
-  const exportWith = (draw: (cy: CyInstance, hulls: SVGSVGElement | null) => void) => {
+  const exportWith = (draw: (image: GraphImage) => void) => {
     const cy = cyRef.current;
     const stage = stageRef.current;
-    if (cy && stage) draw(cy, stage.querySelector<SVGSVGElement>("svg.gf-hulls"));
+    if (cy && stage)
+      draw({
+        cy,
+        bg: canvas,
+        name: exportName,
+        hulls: stage.querySelector<SVGSVGElement>("svg.gf-hulls"),
+      });
   };
   const toggleLayoutLabel =
     layoutMode === "force"
@@ -72,10 +86,9 @@ export function ResultGraphControls({
       testId="canvas"
       fitPadding={FIT_MARGIN}
       exports={{
-        svg: () => exportWith(downloadGraphSvg),
-        png: () => exportWith((cy, hulls) => compositeGraphDownload(cy, hulls, "graph.png", "png")),
-        jpeg: () =>
-          exportWith((cy, hulls) => compositeGraphDownload(cy, hulls, "graph.jpg", "jpg")),
+        svg: () => exportWith(exportSvg),
+        png: () => exportWith(exportPng),
+        jpeg: () => exportWith(exportJpeg),
       }}
       commands={[
         {

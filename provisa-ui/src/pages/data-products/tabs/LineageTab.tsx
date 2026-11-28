@@ -93,6 +93,7 @@ export function LineageTab({
           testId={`data-product-lineage-graph-${productId}`}
           ariaLabel={t("dataProductsTab.detail.lineageTitle")}
           exportName={`${productId}-lineage`}
+          hint={t("provisaGraph.hint")}
         />
       </div>
     </div>

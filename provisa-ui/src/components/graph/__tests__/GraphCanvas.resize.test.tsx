@@ -113,6 +113,7 @@ const BASE_PROPS: CanvasProps = {
   showingParentsCircular: new Set(),
   onToggleParentsCircular: vi.fn(),
   clusterLevel: "none",
+  exportName: "cypher-graph",
 };
 
 describe("GraphCanvas tracks its container's size", () => {
@@ -147,6 +148,14 @@ describe("the mouse wheel over a graph zooms it, never scrolls", () => {
     const wheel = new WheelEvent("wheel", { deltaY: 120, bubbles: true, cancelable: true });
     canvas.dispatchEvent(wheel);
     expect(wheel.defaultPrevented).toBe(true);
+  });
+  // REQ-2239 (amended 2026-11-27): every graph shows the pan and zoom hint; here the wheel zooms.
+  it("says so in the pan and zoom hint, in the shared graph's corner", () => {
+    const { getByTestId } = render(<GraphCanvas {...BASE_PROPS} />);
+    const hint = getByTestId("graph-canvas-hint");
+    expect(hint).toHaveTextContent("Drag to pan · scroll to zoom");
+    expect(hint).toHaveClass("pg-hint");
+    expect(hint.parentElement).toHaveClass("pg-corner");
   });
 });
 

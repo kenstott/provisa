@@ -1047,7 +1047,7 @@ push_mail_env() {
 # After the images are pinned in the env file, the main restart in each arm starts the app with
 # the new settings; the app's own converge_boot_shard then applies the updated pod manifest to
 # GKE, rolling the engine pod to the new images (engine_wake.py:302).
-IMAGE_REGISTRY="ghcr.io/kenstott"
+IMAGE_REGISTRY="ghcr.io/simpleishard-llc"
 
 push_engine_env() {
   echo "== engine image env"

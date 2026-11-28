@@ -752,12 +752,16 @@ async def classify_table(
 
 
 def classified_plausible_types(
-    results: dict[str, list[dict]], suggestions: list[classifications.Suggestion], table_name: str
+    results: dict[str, list[dict]],
+    suggestions: list[classifications.Suggestion],
+    table_name: str,
+    kinds: tuple[classify.Kind, ...],
 ) -> None:
     """A column whose values passed a kind holds that kind (REQ-2147): the first passing kind in
-    the catalogue's order, sensitive kinds first, replaces the column's plausible type."""
+    the order of the org's ``kinds`` (the ones the run tested), sensitive kinds first, replaces the
+    column's plausible type."""
     first: dict[str, classifications.Suggestion] = {}
-    order = {k.id: i for i, k in enumerate(classify.catalogue())}
+    order = {k.id: i for i, k in enumerate(kinds)}
     for s in suggestions:
         held = first.get(s.column)
         if held is None or order[s.match.kind.id] < order[held.match.kind.id]:
@@ -1003,7 +1007,7 @@ async def profile_table(
         )
         suggestions = suggestions_of(judged)
         classified_columns(results, judged)
-        classified_plausible_types(results, suggestions, table_name)
+        classified_plausible_types(results, suggestions, table_name, kinds)
         proposals = [
             p
             for col in read.agg.columns

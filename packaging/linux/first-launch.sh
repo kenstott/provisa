@@ -534,10 +534,15 @@ services:
       # localhost:50071 — correct for a native run, wrong inside compose, where the demo server
       # is its own service. Point them at it.
       DEMO_GRPC_TARGET: "grpc-demo:50071"
+    # Provisa introspects graphql-demo once at boot (app_startup._auto_register_graphql_demo) and
+    # loads petstore-mock's OpenAPI spec once: it starts only after each mock answers.
     depends_on:
-      - petstore-mock
-      - graphql-demo
-      - grpc-demo
+      petstore-mock:
+        condition: service_healthy
+      graphql-demo:
+        condition: service_healthy
+      grpc-demo:
+        condition: service_healthy
   # The demo config registers an OpenAPI source at http://petstore-mock:8080/api/v3 and a
   # GraphQL source at http://graphql-demo:4000/graphql (config/provisa-install.yaml:278-300).
   # A demo deploy that ships neither leaves those sources unresolvable, so both mocks run as
@@ -549,16 +554,39 @@ services:
     restart: unless-stopped
     working_dir: /app/config/demo/servers/petstore
     command: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v3/pet/findByStatus?status=available', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+      start_interval: 1s
   graphql-demo:
     image: provisa/provisa:local
     restart: unless-stopped
     working_dir: /app/config/demo/servers/graphql
     command: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "4000"]
+    # The request Provisa's registration makes: an introspection POST.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; urllib.request.urlopen(urllib.request.Request('http://localhost:4000/graphql', data=json.dumps({'query': '{ __schema { queryType { name } } }'}).encode(), headers={'Content-Type': 'application/json'}), timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+      start_interval: 1s
   grpc-demo:
     image: provisa/provisa:local
     restart: unless-stopped
     working_dir: /app/config/demo/servers/grpc
     command: ["python", "server.py"]
+    # gRPC has no HTTP health endpoint; the port accepting a connection is the answer.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 50071), timeout=3).close()"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+      start_interval: 1s
 YAML
   ok "Demo overlay written: ${file}"
 }
@@ -992,7 +1020,7 @@ services:
       # and, at each sandbox opened, asks for a newer published one -- no redeploy. A demo's
       # logs are read live from its bundle there.
       PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma,groupexposure,agentdata,banksecrecy,audit,affirmation"
-      PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
+      PROVISA_DEMO_REGISTRY: "https://ghcr.io/simpleishard-llc"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
       # This tier builds the deployment's org at startup too, from the control plane, and the
       # demo config's SQLite sources resolve \${env:PROVISA_DEMO_DIR} there: without it they
@@ -1050,7 +1078,7 @@ services:
       PROVISA_DATA_DIR: /var/lib/provisa
       PROVISA_ENGINE: "duckdb"
       PROVISA_DEMO_BUNDLES: "retail"
-      PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
+      PROVISA_DEMO_REGISTRY: "https://ghcr.io/simpleishard-llc"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
       PROVISA_SANDBOX_INSTANCE: "\${PROVISA_SANDBOX_INSTANCE:-}"
       PROVISA_SANDBOX_IDLE_STOP_SECONDS: "\${PROVISA_SANDBOX_IDLE_STOP_SECONDS:-}"

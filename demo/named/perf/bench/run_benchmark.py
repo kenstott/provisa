@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import itertools
 import json
 import math
 import os
@@ -199,6 +200,10 @@ class QueryResult:
     # The query language the request was written in (sql/cypher/graphql/grpc), beside the
     # transport that carried it: flight carries SQL here, never Cypher, and the report says so.
     dialect: str = ""
+    # Per transport, the request spans the server's trace receiver saw while this cell ran and
+    # each stage's time per span (optimistic_load.stage_delta). Set only for a cold-key cell run
+    # with --stage-tally-url; its error text instead when the spans did not all arrive.
+    stages: dict | None = None
 
     @property
     def ok_samples(self) -> list[Sample]:
@@ -220,6 +225,7 @@ class QueryResult:
                 "errors": errors,
                 "first_error": first_error,
                 "status": "all_failed",
+                **({"stages": self.stages} if self.stages is not None else {}),
             }
         # REQ-1894: the "nocache" pass measures every iteration; the "cache" pass drops iteration
         # 1 (see cache_pass field doc above) before computing percentiles. Both are still
@@ -256,6 +262,7 @@ class QueryResult:
             "latency_ms_p95": _percentile(latencies_ms, 0.95),
             "latency_ms_p99": _percentile(latencies_ms, 0.99),
             "latency_ms_max": latencies_ms[-1],
+            **({"stages": self.stages} if self.stages is not None else {}),
         }
 
 
@@ -1050,8 +1057,44 @@ _CALL_METHOD: dict[str, str] = {
 _CACHE_HINT = {"sql": "-- @provisa cache=true", "cypher": "// @provisa cache=true"}
 
 
+# Keys handed out so far, per cold-key query: one sequence for the whole process, so no sample on
+# any transport or in either pass reuses a key a request already landed.
+_COLD_KEYS: dict[str, itertools.count] = {}
+
+
+def _params_for(q: Query) -> dict:
+    """The query's parameters for one sample: a cold-key query gets the next unused key."""
+    if q.cold_key is None:
+        return q.params
+    keys = _COLD_KEYS.setdefault(q.id, itertools.count(q.cold_key.first))
+    return {**q.params, q.cold_key.param: next(keys)}
+
+
+_SPAN_WAIT_S = 30.0
+
+
+def _stage_totals_after(url: str, requests_before: int, expected: int) -> dict:
+    """The receiver's tally once it holds ``expected`` more request spans than before (spans leave
+    the server in export batches), or whatever it holds after ``_SPAN_WAIT_S``."""
+    import optimistic_load
+
+    deadline = time.monotonic() + _SPAN_WAIT_S
+    while True:
+        totals = optimistic_load._stage_totals(url)  # noqa: SLF001
+        if sum(totals["requests"].values()) - requests_before >= expected:
+            return totals
+        if time.monotonic() >= deadline:
+            return totals
+        time.sleep(0.5)
+
+
 def _run_sequential(
-    transport: Transport, q: Query, method: str, text: str | dict, no_cache: bool = False
+    transport: Transport,
+    q: Query,
+    method: str,
+    text: str | dict,
+    no_cache: bool = False,
+    stage_tally_url: str | None = None,
 ) -> QueryResult:
     # REQ-1894: cache_pass records which of the two full passes (see run_all/main) produced this
     # result — QueryResult.summary() reads it to decide whether to measure every iteration
@@ -1069,17 +1112,23 @@ def _run_sequential(
         # REQ-544 (amended 2026-09-30): pgwire, Flight SQL, Bolt and /data/cypher opt into the
         # response cache per statement with a comment; the "nocache" pass sends none.
         text = f"{_CACHE_HINT[method]}\n{text}"
+    tally_before = None
+    if stage_tally_url is not None and q.cold_key is not None:
+        import optimistic_load
+
+        tally_before = optimistic_load._stage_totals(stage_tally_url)  # noqa: SLF001
     for i in range(q.iterations):
+        params = _params_for(q)
         t0 = time.perf_counter()
         try:
             if method == "sql":
-                n, byte_count, overhead_s = call(text, q.params, q.category)
+                n, byte_count, overhead_s = call(text, params, q.category)
             elif method == "graphql":
-                n, byte_count, overhead_s = call(text, q.params, no_cache=no_cache)
+                n, byte_count, overhead_s = call(text, params, no_cache=no_cache)
             elif method == "grpc":
-                n, byte_count, overhead_s = call(text, q.params, q.category, no_cache=no_cache)
+                n, byte_count, overhead_s = call(text, params, q.category, no_cache=no_cache)
             else:
-                n, byte_count, overhead_s = call(text, q.params)
+                n, byte_count, overhead_s = call(text, params)
             # overhead_s (time spent computing _payload_bytes, and for Flight, Arrow->Python
             # conversion) is the benchmark harness's own client-side bookkeeping cost, not
             # Provisa's/the network's — excluded so reported latency reflects query cost, not
@@ -1088,7 +1137,8 @@ def _run_sequential(
             result.samples.append(Sample(elapsed, n, byte_count))
             print(
                 f"    iter {i + 1}/{q.iterations}: {elapsed * 1000:.0f}ms, {n} rows, "
-                f"{byte_count / 1e6:.1f}MB",
+                f"{byte_count / 1e6:.1f}MB"
+                + (f", {q.cold_key.param}={params[q.cold_key.param]}" if q.cold_key else ""),
                 file=sys.stderr,
                 flush=True,
             )
@@ -1099,6 +1149,18 @@ def _run_sequential(
                 f"    iter {i + 1}/{q.iterations}: FAILED after {elapsed * 1000:.0f}ms: {exc}",
                 file=sys.stderr,
                 flush=True,
+            )
+    if tally_before is not None:
+        import optimistic_load
+
+        after = _stage_totals_after(
+            stage_tally_url, sum(tally_before["requests"].values()), q.iterations
+        )
+        result.stages = optimistic_load.stage_delta(tally_before, after)
+        seen = sum(d["request_spans"] for d in result.stages.values())
+        if seen < q.iterations:
+            result.stages["error"] = (
+                f"{seen} of {q.iterations} request spans reached the receiver in {_SPAN_WAIT_S:.0f} s"
             )
     return result
 
@@ -1275,6 +1337,7 @@ def run_all(
     query_ids: set[str] | None = None,
     on_result: Callable[[list[QueryResult]], object] | None = None,
     no_cache: bool = False,
+    stage_tally_url: str | None = None,
 ) -> list[QueryResult]:
     # concurrency_ramp is NOT in QUERIES — it runs separately via artillery-concurrency-ramp.yml
     # (open-model arrival-rate load; this module only does closed-model sequential runs — see
@@ -1321,7 +1384,11 @@ def run_all(
                     file=sys.stderr,
                     flush=True,
                 )
-                results.append(_run_sequential(t, q, method, text, no_cache=no_cache))
+                results.append(
+                    _run_sequential(
+                        t, q, method, text, no_cache=no_cache, stage_tally_url=stage_tally_url
+                    )
+                )
                 if on_result is not None:
                     on_result(results)
     return results
@@ -1479,10 +1546,22 @@ def main() -> int:
         return summaries
 
     print(f"Running benchmark matrix (no-cache pass), engine={args.engine}...", file=sys.stderr)
-    nocache_results = run_all(transports, query_ids, on_result=_checkpoint, no_cache=True)
+    nocache_results = run_all(
+        transports,
+        query_ids,
+        on_result=_checkpoint,
+        no_cache=True,
+        stage_tally_url=args.stage_tally_url,
+    )
     _prior_pass_results = nocache_results
     print(f"Running benchmark matrix (cache pass), engine={args.engine}...", file=sys.stderr)
-    cache_results = run_all(transports, query_ids, on_result=_checkpoint, no_cache=False)
+    cache_results = run_all(
+        transports,
+        query_ids,
+        on_result=_checkpoint,
+        no_cache=False,
+        stage_tally_url=args.stage_tally_url,
+    )
     results = nocache_results + cache_results
     # `results` is now self-contained (both passes) — any later _checkpoint(results) call must
     # not also re-prepend _prior_pass_results, or the nocache set gets counted twice (confirmed

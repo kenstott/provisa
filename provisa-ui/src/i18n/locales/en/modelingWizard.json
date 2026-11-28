@@ -4,6 +4,8 @@
     "next": "Next",
     "toReview": "Review",
     "back": "Back",
+    "skipStep": "Skip step",
+    "close": "Close",
     "remove": "Remove",
     "domainHelp": "The domain every table this wizard creates is registered under: its namespace for access control and querying.",
     "validTime": "Valid time",

@@ -83,7 +83,9 @@ const GRAPH = {
     { id: "raw.a.x", column: "x", relation: "raw.a", kind: "source", materialized: false },
     { id: "t.b.x", column: "x", relation: "t.b", kind: "source", materialized: false },
   ],
-  edges: [{ source: "raw.a.x", target: "t.b.x", kind: "copy" }],
+  edges: [
+    { source: "raw.a.x", target: "t.b.x", transform: "x", ops: [{ name: "x", kind: "identity" }] },
+  ],
   outputs: [],
   cycles: [],
 } as never;

@@ -818,7 +818,7 @@ def test_the_zaychik_image_is_the_releases_own():
     # machine.
     prebuilt = (_ROOT / ".github/workflows/release-prebuilt.yml").read_text()
     for machine in ("x86_64", "aarch64"):
-        local = _ok(f"zaychik_image kenstott/provisa v0.1.0-alpha.513 /assets {machine}").strip()
+        local = _ok(f"zaychik_image v0.1.0-alpha.513 /assets {machine}").strip()
         assert local == "provisa/zaychik:local"
     for platform in ("linux/amd64", "linux/arm64"):
         assert f"docker build --platform {platform} -t {local} ./zaychik" in prebuilt
@@ -827,24 +827,24 @@ def test_the_zaychik_image_is_the_releases_own():
             in prebuilt
         )
     assert _ok('printf "%s" "$INSTALL_HOST_ZAYCHIK_IMAGE_NAME"') == "zaychik-local"
-    # A published release on x86_64: the image release-publish.yml pushes for its version.
+    # A published release on x86_64: the image release-publish.yml pushes for its version, under
+    # the organization's namespace.
     publish = yaml.safe_load((_ROOT / ".github/workflows/release-publish.yml").read_text())
     push = next(
         s["with"]
         for s in publish["jobs"]["publish-zaychik-image"]["steps"]
         if s.get("uses", "").startswith("docker/build-push-action")
     )
-    assert (
-        push["tags"]
-        == "ghcr.io/${{ github.repository_owner }}/provisa-zaychik:${{ inputs.version }}"
-    )
-    published = _ok("zaychik_image acme/provisa v0.1.0-alpha.513 '' x86_64").strip()
-    assert published == "ghcr.io/acme/provisa-zaychik:v0.1.0-alpha.513"
+    namespace = _ok('printf "%s" "$INSTALL_HOST_IMAGE_NAMESPACE"')
+    assert namespace == "ghcr.io/simpleishard-llc"
+    assert push["tags"] == f"{namespace}/provisa-zaychik:${{{{ inputs.version }}}}"
+    published = _ok("zaychik_image v0.1.0-alpha.513 '' x86_64").strip()
+    assert published == f"{namespace}/provisa-zaychik:v0.1.0-alpha.513"
     # REQ-2269 (amended 2026-11-26): that pushed image is amd64 only, so a published aarch64
     # install runs the one in the release's core-images asset, never a registry's.
     assert push["platforms"] == "linux/amd64"
     for machine in ("aarch64", "arm64"):
-        out = _ok(f"zaychik_image acme/provisa v0.1.0-alpha.513 '' {machine}").strip()
+        out = _ok(f"zaychik_image v0.1.0-alpha.513 '' {machine}").strip()
         assert out == "provisa/zaychik:local"
 
 
@@ -1073,7 +1073,7 @@ def test_a_published_x86_64_install_pulls_the_releases_zaychik_image(tmp_path):
         "curl() { echo unexpected curl >&2; return 1; }\nIH_ASSETS_DIR=''\n"
         f'load_zaychik_image {shlex.quote(str(tmp_path))}\nprintf "%s" "$IH_ZAYCHIK_IMAGE"'
     )
-    assert out == f"ghcr.io/kenstott/provisa-zaychik:{_TAG}"
+    assert out == f"ghcr.io/simpleishard-llc/provisa-zaychik:{_TAG}"
     assert pulled.read_text() == out
 
 

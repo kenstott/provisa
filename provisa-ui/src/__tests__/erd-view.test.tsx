@@ -425,6 +425,18 @@ describe("the toggle", () => {
   });
 });
 
+// REQ-2239 (amended 2026-11-27): every graph shows the pan and zoom hint.
+describe("the ERD's canvas", () => {
+  it("shows the shared graph's pan and zoom hint", async () => {
+    open("/tables?view=erd");
+    const panel = await screen.findByTestId("erd-panel");
+    await diagramHolds("t:1");
+    expect(
+      within(panel).getByText("Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom"),
+    ).toHaveClass("pg-hint");
+  });
+});
+
 describe("a focus link", () => {
   it("with only objects shows their own domains and highlights them", async () => {
     open("/tables?view=erd&objects=finance.ledger");

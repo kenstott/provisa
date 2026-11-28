@@ -275,6 +275,63 @@ def register(
     async def export_model_config(role: str | None = None) -> dict:
         return await mt.export_model_config(*ctx(role))
 
+    @described
+    async def list_classification_kinds(role: str | None = None) -> dict:
+        return await mt.list_classification_kinds(*ctx(role))
+
+    @described
+    async def create_classification_kind(
+        label: str,
+        pattern: str,
+        check: str | None,
+        ignore: str | None,
+        threshold: float,
+        sensitive: bool,
+        maskPreset: str | None,  # noqa: N803 -- the route's field name
+        term: str,
+        role: str | None = None,
+    ) -> dict:
+        return await mt.create_classification_kind(
+            *ctx(role), label, pattern, check, ignore, threshold, sensitive, maskPreset, term
+        )
+
+    @described
+    async def change_classification_kind(
+        kind_id: str,
+        enabled: bool | None = None,
+        threshold: float | None = None,
+        sensitive: bool | None = None,
+        maskPreset: str | None = None,  # noqa: N803 -- the route's field name
+        label: str | None = None,
+        pattern: str | None = None,
+        check: str | None = None,
+        ignore: str | None = None,
+        term: str | None = None,
+        role: str | None = None,
+    ) -> dict:
+        # Over MCP a field is sent or not; null is a value only for the fields that may be null
+        # (maskPreset, check, ignore), and sending one of them null clears it. Those are told apart
+        # from a field not sent by the arguments actually given.
+        given = {
+            k: v
+            for k, v in {
+                "enabled": enabled,
+                "threshold": threshold,
+                "sensitive": sensitive,
+                "label": label,
+                "pattern": pattern,
+                "term": term,
+            }.items()
+            if v is not None
+        }
+        cleared = {"maskPreset": maskPreset, "check": check, "ignore": ignore}
+        given.update({k: v for k, v in cleared.items() if v is not None})
+        return await mt.change_classification_kind(*ctx(role), kind_id, **given)
+
+    @described
+    async def delete_classification_kind(kind_id: str, role: str | None = None) -> dict:
+        return await mt.delete_classification_kind(*ctx(role), kind_id)
+
     # The tag edits act at once over MCP, as the caller, as set_table_profiler does.
     @described
     async def assign_tag(

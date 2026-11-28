@@ -9,15 +9,17 @@
 // permission from the copyright holder.
 
 // REQ-2123: the canvas of a 3D profile view, with its label layer, loader, hover card, hint and
-// legend. REQ-2239 (amended 2026-11-11): its view controls -- Reset view, Full screen and Download,
-// then Rotate and Grid where the scene draws a floor grid -- in the one stack every graph's canvas has
-// (CanvasControls), bottom-left; the legend stands beside it.
+// legend. REQ-2239 (amended 2026-11-11, 2026-11-27): its view controls -- the shared commands first,
+// Reset view, Zoom in, Zoom out, Full screen and Download, then Rotate and Grid where the scene draws
+// a floor grid -- in the one stack every graph's canvas has (CanvasControls), bottom-left; the legend
+// stands beside it.
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Loader } from "@mantine/core";
 import { Grid3x3, Rotate3d } from "lucide-react";
-import { FitScreenIcon } from "../../../components/graph/GraphIcons";
+import { FitScreenIcon, ZoomInIcon, ZoomOutIcon } from "../../../components/graph/GraphIcons";
+import { ZOOM_STEP } from "../../../components/provisa-graph/GraphControls";
 import {
   CanvasButton,
   CanvasControls,
@@ -27,6 +29,9 @@ import {
 import type { StageRefs } from "./useLazyScene";
 import { ExportMenu } from "./ExportMenu";
 import type { ExportableScene } from "./exportImage";
+
+/** What a stage's scene does, once it is up: its exports, and a zoom button's step (BaseScene.zoom). */
+export type StageScene = ExportableScene & { zoom: (factor: number) => void };
 
 /** A one-shot camera move; ``seq`` changes for every request. */
 export interface CameraCommand {
@@ -65,7 +70,7 @@ export function Stage3D({
   canvasLabel,
   tip,
   legend,
-  exportable,
+  scene,
   exportName,
   testId,
   controls,
@@ -77,8 +82,8 @@ export function Stage3D({
   canvasLabel: string;
   tip: StageTip | null;
   legend: ReactNode;
-  /** The scene an export draws, once it is up. */
-  exportable: ExportableScene | null;
+  /** The scene an export draws and the zoom buttons move, once it is up. */
+  scene: StageScene | null;
   /** What the view's exports are named after (the graph and its view). */
   exportName: string;
   testId: string;
@@ -123,9 +128,23 @@ export function Stage3D({
               testId={`${controls.testId}-reset`}
             />
             {/* The shared ones first, as on every graph (GraphControls), then the view's own. */}
+            <CanvasButton
+              label={t("canvasControls.zoomIn")}
+              icon={<ZoomInIcon size={CONTROL_ICON} />}
+              onClick={() => scene?.zoom(ZOOM_STEP)}
+              disabled={scene == null}
+              testId={`${controls.testId}-zoom-in`}
+            />
+            <CanvasButton
+              label={t("canvasControls.zoomOut")}
+              icon={<ZoomOutIcon size={CONTROL_ICON} />}
+              onClick={() => scene?.zoom(1 / ZOOM_STEP)}
+              disabled={scene == null}
+              testId={`${controls.testId}-zoom-out`}
+            />
             <FullscreenButton stageRef={wrapRef} testId={testId} />
             <ExportMenu
-              scene={ready ? exportable : null}
+              scene={ready ? scene : null}
               stage={wrapRef}
               name={exportName}
               testId={testId}

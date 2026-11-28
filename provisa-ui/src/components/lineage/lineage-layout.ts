@@ -22,7 +22,12 @@
 //
 // Pure: no cytoscape here. The component turns these into elements and positions.
 
-import type { LineageGraphData, LineageNative, LineageNode } from "../../api/lineage";
+import type {
+  LineageEdge,
+  LineageGraphData,
+  LineageNative,
+  LineageNode,
+} from "../../api/lineage";
 import { SOURCE_TYPES } from "../../pages/sources/constants";
 import { shownSourceType, sourceTypeLabel } from "../../pages/sources/sourceHelpers";
 import { sourceLogoImage } from "../sourceLogoMarks";
@@ -304,10 +309,7 @@ export function buildLineageModel(
     const from = drawnEnd(e.source);
     const target = drawnEnd(e.target);
     if (from === target) continue; // internal to one collapsed relation
-    const label = (e.ops ?? [])
-      .filter((o) => o.kind !== "identity" && o.kind !== "constant")
-      .map((o) => (o.args?.length ? `${o.name}(${o.args.join(", ")})` : o.name))
-      .join(" ");
+    const label = transformLabel(e);
     const command = (e.ops ?? []).some((o) => o.kind === "command");
     const commandName =
       (e.ops ?? []).find((o) => o.kind === "command" || o.kind === "command_write")?.name ?? null;
@@ -320,7 +322,10 @@ export function buildLineageModel(
       prior.command = prior.command || command;
       prior.commandName = prior.commandName === commandName ? commandName : null;
       prior.via = [...new Set([...prior.via, ...(e.via ?? [])])];
-      prior.label = ""; // several transforms behind one drawn edge: report the count, not one formula
+      // REQ-2239: several columns behind one drawn edge: it names each distinct transform once.
+      prior.label = [...new Set([...prior.label.split(TRANSFORMS_SEP), label])]
+        .filter(Boolean)
+        .join(TRANSFORMS_SEP);
     } else {
       rolled.set(key, {
         id: `e${rolled.size}`,
@@ -586,14 +591,33 @@ function foldViewsOntoEdges(
   };
 }
 
-/** The text a drawn edge carries: its transform (or the count of columns behind it) and, when it
- * reads through views, their names; REQ-2229: and, when an OpenLineage event reported it, that. */
+/** Between the distinct transforms of the columns rolled into one drawn edge. */
+const TRANSFORMS_SEP = ", ";
+
+/** REQ-2239: the transform one column edge applies, as its line names it. A definition's edge is
+ * named by its ops, the formula read from the SQL (identities and constants name nothing); an
+ * OpenLineage-reported edge has no parsed ops, and its transform is the facet's type:subtype
+ * (REQ-2229, reported.py), named as it is. */
+export function transformLabel(e: Pick<LineageEdge, "transform" | "ops" | "origin">): string {
+  if (e.origin === "openlineage") return e.transform;
+  return e.ops
+    .filter((o) => o.kind !== "identity" && o.kind !== "constant")
+    .map((o) => (o.args?.length ? `${o.name}(${o.args.join(", ")})` : o.name))
+    .join(" ");
+}
+
+/** The text a drawn edge carries: its transforms (and, when several columns roll into it, their
+ * count) and, when it reads through views, their names; REQ-2229: and, when an OpenLineage event
+ * reported it, that. */
 export function edgeText(
   e: Pick<LineageDrawnEdge, "label" | "count" | "via" | "reported">,
   reportedWord = "",
 ): string {
   // A reported edge's own words fill the gap between two boxes; a count beside them is clipped.
-  const what = e.count > 1 ? (e.reported ? "" : `${e.count} columns`) : e.label;
+  const what =
+    e.count > 1 && !e.reported
+      ? [e.label, `${e.count} columns`].filter(Boolean).join(" · ")
+      : e.label;
   const text = e.via.length > 0 ? [what, `via ${e.via.join(", ")}`].filter(Boolean).join(" ") : what;
   return e.reported ? [text, reportedWord].filter(Boolean).join(" · ") : text;
 }

@@ -4,6 +4,8 @@
     "next": "下一步",
     "toReview": "审阅",
     "back": "上一步",
+    "skipStep": "跳过此步骤",
+    "close": "关闭",
     "remove": "移除",
     "domainHelp": "此向导创建的每张表都注册到该域:它是访问控制和查询的命名空间。",
     "validTime": "有效时间",

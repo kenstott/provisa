@@ -32,6 +32,11 @@ on:
         description: Leave the run (undraft, wheel index, image pushes). False on a dry run.
         type: boolean
         required: true
+    secrets:
+      # Passed by name: a token that can push to ghcr.io/simpleishard-llc. The repository is not
+      # in that organization yet, so its GITHUB_TOKEN cannot push there.
+      GHCR:
+        required: true
   workflow_dispatch:
     inputs:
       version:
@@ -239,7 +244,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR }}
 
       # amd64 only — every GKE engine node pool runs amd64 (terraform/gcp-saas/gke.tf).
       - name: Build and push engine image
@@ -253,7 +258,7 @@ jobs:
           build-args: |
             PROVISA_VERSION=${{ inputs.version }}
             GITHUB_REPO=${{ github.repository }}
-          tags: ghcr.io/${{ github.repository_owner }}/provisa-trino-engine:${{ inputs.version }}
+          tags: ghcr.io/simpleishard-llc/provisa-trino-engine:${{ inputs.version }}
 
   publish-zaychik-image:
     name: Publish Arrow Flight SQL proxy image
@@ -274,7 +279,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR }}
 
       # amd64 only, and for the same reason as the engine image: this runs as a
       # sidecar in the engine's own pod (REQ-1448), so it lands wherever that lands.
@@ -285,4 +290,4 @@ jobs:
           platforms: linux/amd64
           push: ${{ inputs.publish }}
           provenance: false
-          tags: ghcr.io/${{ github.repository_owner }}/provisa-zaychik:${{ inputs.version }}
+          tags: ghcr.io/simpleishard-llc/provisa-zaychik:${{ inputs.version }}

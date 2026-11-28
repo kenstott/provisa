@@ -235,6 +235,9 @@ async def adopt_declared_rows(state: Any, directory: Path) -> list[tuple[str, st
         except BaseException:
             await target.abort()
             raise
+        from provisa.federation.store_writer import forget_ensured
+
+        forget_ensured(address.schema, address.table)  # swapped in: the row cache ensures it again
         async with state.tenant_db.acquire() as conn:
             await replica_state.record_adopted(
                 conn,

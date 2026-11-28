@@ -337,6 +337,17 @@ describe("the 2D view's controls (2D SHOWS ONLY 2D CONTROLS)", () => {
     expect(await within(full).findByTestId("graph3d-layers-menu")).toBeInTheDocument();
   });
 
+  // REQ-2239 (amended 2026-11-27): fitting is one control, the canvas bar's Fit all, with no
+  // second toolbar button.
+  it("fits from the canvas bar's Fit all only, with no Reset view in the toolbar", async () => {
+    const full = await explorer();
+    const bar = within(full).getByTestId("graph3d-lanes-canvas-bar");
+    expect(within(bar).getByRole("button", { name: "Fit all", hidden: true })).toBeInTheDocument();
+    expect(within(full).queryByTestId("graph3d-reset")).not.toBeInTheDocument();
+    for (const toolbar of full.querySelectorAll<HTMLElement>(".p3d-toolbar"))
+      expect(within(toolbar).queryByRole("button", { name: "Reset view" })).toBeNull();
+  });
+
   it("keeps the Term relationships filter in 2D, whose term links it filters, and in 3D", async () => {
     const full = await explorer();
     expect(within(full).getByTestId("graph3d-filter-edge-type")).toHaveTextContent(

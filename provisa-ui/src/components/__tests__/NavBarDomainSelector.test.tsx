@@ -12,13 +12,16 @@
 // (its vocabulary is narrowed by it, as the Cypher page's labels are).
 
 import { describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../../test-utils/render";
 import { NavBar } from "../NavBar";
 
+// REQ-2277: unordered, business and internal domains mixed, as /data/domains answers them.
+const DOMAINS = ["ops", "pet-store", "meta", "hr", "ontology", "finance"];
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
-    domains: ["hr", "ops"],
+    domains: DOMAINS,
     checkedDomains: new Set(["hr", "ops"]),
     toggleDomain: () => {},
     domainsEnabled: true,
@@ -79,5 +82,39 @@ describe("the navbar's domain selector", () => {
   it("is not offered where the selection narrows nothing", () => {
     renderWithProviders(<NavBar />, { initialEntries: ["/docs"] });
     expect(screen.queryByTestId("navbar-domain-trigger")).toBeNull();
+  });
+
+  // REQ-2277 (amended 2026-11-27): business domains first, alphabetically, then a divider and a
+  // System label over the internal domains; the count on the trigger is every domain.
+  it("lists the business domains alphabetically, then the system domains under a System label", async () => {
+    renderWithProviders(<NavBar />, { initialEntries: ["/graph"] });
+    const trigger = screen.getByTestId("navbar-domain-trigger");
+    expect(trigger).toHaveTextContent("Domains (2/6)");
+
+    await userEvent.click(trigger);
+    // Mantine keeps the dropdown display:none in jsdom (no layout), so find it by its contents.
+    const systemLabel = await screen.findByTestId("navbar-domain-system-label");
+    const menu = systemLabel.closest<HTMLElement>('[role="menu"]');
+    if (!menu) throw new Error("the System label is not inside the domains menu");
+    const sequence = Array.from(
+      menu.querySelectorAll<HTMLElement>(
+        '[data-testid^="navbar-domain-item-"], [data-testid^="navbar-domain-system-"]',
+      ),
+    )
+      .map((el) => el.dataset.testid)
+      // Mantine repeats the test id on a checkbox's root and its input.
+      .filter((id, i, all) => all.indexOf(id) === i);
+    expect(sequence).toEqual([
+      "navbar-domain-item-finance",
+      "navbar-domain-item-hr",
+      "navbar-domain-item-pet-store",
+      "navbar-domain-system-divider",
+      "navbar-domain-system-label",
+      "navbar-domain-item-meta",
+      "navbar-domain-item-ontology",
+      "navbar-domain-item-ops",
+    ]);
+    expect(within(menu).getByTestId("navbar-domain-system-label")).toHaveTextContent("System");
+    expect(trigger).toHaveTextContent("Domains (2/6)");
   });
 });

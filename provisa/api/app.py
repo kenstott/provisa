@@ -1650,6 +1650,16 @@ async def _load_and_build(
     assert state.admin_db is not None  # the platform control plane holds the settings
     _set_fake_key(_fake_key.ensure(state.admin_db))
 
+    # REQ-1264/REQ-2290: the break-glass platform admin, created at the platform's first start.
+    # Its generated password is shown once on the console by the process that created it; only
+    # its bcrypt hash is kept, in the platform control plane.
+    from provisa.auth.superuser import announce_breakglass, ensure_breakglass
+
+    _breakglass_password = ensure_breakglass(state.admin_db)
+    if _breakglass_password is not None:
+        announce_breakglass(_breakglass_password)
+    del _breakglass_password
+
     # REQ-1448: the wake precedes every use of the engine's address, and the seed below is the
     # first — it writes the endpoint into the built-in source rows. A shard's address exists only
     # between a wake and the next idle-to-zero (the provisioner reads it from the ready pod), so
@@ -4950,6 +4960,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
                     finally:
                         reset_current_org(_tok)
     state.federation_engine.close()
+    # REQ-1316: the row cache's pooled store handles, one per store DSN, shared by every org.
+    from provisa.federation.store_writer import dispose_shared_stores
+
+    dispose_shared_stores()
     # The tenant engine is the process's, built once by _init_control_planes and shared by every
     # org runtime's handles (REQ-1316); closing a handle above disposes it only when that handle is
     # over it. Disposed here, so no pooled connection to the control plane outlives the process's

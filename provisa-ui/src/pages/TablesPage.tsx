@@ -307,7 +307,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [showForm, setShowForm] = useState(false);
   // REQ-2234: several tables just registered: the panel shows their data, the first in view.
   const [registeredMany, setRegisteredMany] = useState<Registered | null>(null);
-  // REQ-1164: entity/fact modeling; REQ-2199: + Model's drop down also opens a method's wizard.
+  // REQ-1164: entity/fact modeling; REQ-2199: + Model's drop down also opens a method's wizard,
+  // in the panel too (amended 2026-11-27: its step choices are the panel's command bar).
   const [showModeling, setShowModeling] = useState<false | "entityFact" | "star" | "vault">(false);
   // REQ-2115: Polly's read_screen reads the page's view from here, and the modeling form or wizard
   // open (a wizard's step is published by the step itself). A table is named only once the list
@@ -1064,7 +1065,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           setShowModeling(false);
           reload();
         }}
-        onCancel={() => setShowModeling(false)}
+        onClose={() => setShowModeling(false)}
       />
     ) : showModeling === "vault" ? (
       <DataVaultWizard
@@ -1073,7 +1074,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           setShowModeling(false);
           reload();
         }}
-        onCancel={() => setShowModeling(false)}
+        onClose={() => setShowModeling(false)}
       />
     ) : showModeling ? (
       <ModelingForm

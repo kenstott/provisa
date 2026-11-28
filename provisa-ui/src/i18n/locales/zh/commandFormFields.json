@@ -72,6 +72,9 @@
     "argDefault": "参数 {{name}} 的默认值",
     "argDefaultPlaceholder": "默认值（必填则留空）",
     "nativeSql": "原生 SQL",
-    "nativeSqlHint": "使用数据源自身方言的 SQL，可为一条或多条语句，在数据源上以同一个事务运行：要么全部提交，要么全部不提交。参数写作 {{placeholder}}，每个参数都作为值绑定。返回最后一条语句的行。"
+    "nativeSqlHint": "使用数据源自身方言的 SQL，可为一条或多条语句，在数据源上以同一个事务运行：要么全部提交，要么全部不提交。参数写作 {{placeholder}}，每个参数都作为值绑定。返回最后一条语句的行。",
+    "enteredCodeHint": "随模型保存并在沙箱中运行的 Python。用 @query（读取）或 @command（写入）标记命令调用的函数；为其参数和结果声明类型。",
+    "enteredFunctionHint": "此命令调用的代码中的函数。",
+    "enteredDeclarationHint": "每次保存命令时从函数的声明中读取。"
   }
 }

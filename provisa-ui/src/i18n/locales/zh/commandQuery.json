@@ -16,6 +16,7 @@
     "notJson": "{{name}} 不是 JSON",
     "notRows": "{{name}}：请粘贴首行为列名的 CSV，或对象组成的 JSON 数组",
     "overCap": "{{name}}：最多 {{cap}} 行",
-    "notReadable": "{{name}}：所选的表不是您可读取的表"
+    "notReadable": "{{name}}：所选的表不是您可读取的表",
+    "noTableFits": "您可读取的表中没有包含列 {{columns}} 的表。"
   }
 }

@@ -610,6 +610,8 @@ export function GraphExplorer({
     move("reset", null);
     setExpanded(new Set());
   };
+  // A download is named after the view (REQ-2239): the graph, and its preset where that differs.
+  const viewName = preset === exportName ? exportName : `${exportName}-${preset}`;
   const stage = query?.notice ? (
     <div className="p3d-stage g3d-empty" data-testid={`${testId}-over-budget`}>
       <Text size="sm" c="dimmed">
@@ -632,6 +634,7 @@ export function GraphExplorer({
       onMore={toggleExpanded}
       command={command}
       opensOn={focusNode?.id ?? null}
+      exportName={viewName}
       testId={`${testId}-lanes`}
       bare={snippet}
     />
@@ -639,7 +642,7 @@ export function GraphExplorer({
     <GraphStage
       s={s}
       command={command}
-      exportName={preset === exportName ? exportName : `${exportName}-${preset}`}
+      exportName={viewName}
       testId={`${testId}-stage`}
       controls={{
         testId,
@@ -706,14 +709,8 @@ export function GraphExplorer({
             </Tip>
           </>
         )}
-        {/* REQ-2239: in 3D, Reset view is in the canvas's controls (Stage3D). The lane diagram's
-            stays here: it folds every table back as well as fitting, where its canvas's Fit fits
-            the whole image only. */}
-        {flat && (
-          <Button size="xs" variant="default" onClick={resetView} data-testid={`${testId}-reset`}>
-            {t("profile3d.resetView")}
-          </Button>
-        )}
+        {/* REQ-2239 (amended 2026-11-27): fitting is one control in the canvas's bar, Fit all in
+            2D (GraphControls) and Reset view in 3D (Stage3D); no toolbar button repeats it. */}
         {!flat && layout === "force" && (
           <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
         )}

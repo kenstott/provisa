@@ -136,7 +136,7 @@ export function TerrainStage({
       error={error}
       canvasLabel={t("profileTerrain.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
-      exportable={scene}
+      scene={scene}
       exportName={exportName}
       testId="terrain-stage"
       controls={controls}

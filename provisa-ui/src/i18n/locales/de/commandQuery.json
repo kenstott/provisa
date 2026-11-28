@@ -16,6 +16,7 @@
     "notJson": "{{name}} ist kein JSON",
     "notRows": "{{name}}: CSV einfügen, dessen erste Zeile die Spalten benennt, oder ein JSON-Array von Objekten",
     "overCap": "{{name}}: höchstens {{cap}} Zeilen",
-    "notReadable": "{{name}}: Die gewählte Tabelle dürfen Sie nicht lesen"
+    "notReadable": "{{name}}: Die gewählte Tabelle dürfen Sie nicht lesen",
+    "noTableFits": "Keine Tabelle, die Sie lesen dürfen, hat die Spalten {{columns}}."
   }
 }

@@ -2852,6 +2852,21 @@ async def _source_for_introspection(source_id: str):
     return source_from_row(row)
 
 
+async def _google_sheets_columns(source_id: str, table_name: str) -> list[AvailableColumnType]:
+    """REQ-1998: a sheet's columns where the engine lands Google Sheets through the Sheets API (it
+    has no gsheets extension, so no engine catalog lists the sheet): its header row, each column
+    typed by its values, read through the API as the landing reads it."""
+    import asyncio as _asyncio
+
+    from provisa.events.sheets_reader import read_sheet_columns
+
+    source = await _source_for_introspection(source_id)
+    if source is None:
+        raise LookupError(f"no source {source_id!r} to read the columns of")
+    columns = await _asyncio.to_thread(read_sheet_columns, source, table_name)
+    return [AvailableColumnType(name=name, data_type=ir, comment=None) for name, ir in columns]
+
+
 async def _cassandra_columns(
     source_id: str, keyspace: str, table_name: str
 ) -> list[AvailableColumnType]:
@@ -3330,6 +3345,8 @@ async def _introspect_available_columns(
             return await _druid_columns(source_id, table_name)
         if source_type == "hive_s3":
             return await _hive_s3_columns(source_id, schema_name, table_name)
+        if source_type == "google_sheets":
+            return await _google_sheets_columns(source_id, table_name)
     if source_type == "google_workspace":
         # REQ-1923: a canonical mail table's columns are the canonical ones, by definition.
         from provisa.core.canonical_mail import identity_columns, landing_columns
