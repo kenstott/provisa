@@ -20,7 +20,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Button, Loader } from "@mantine/core";
+import { ActionIcon, Alert, Loader } from "@mantine/core";
 import { Network } from "lucide-react";
 import { FitModal } from "../../pages/tables/profile3d/Expandable3D";
 import { ONTOLOGY_SETTINGS, type GraphKey } from "../../pages/tables/profile3d/graphSettings";
@@ -308,15 +308,16 @@ export function ProductMapButton() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button
-        size="xs"
-        variant="default"
-        leftSection={<Network size={14} />}
+      {/* Icon only (maintainer 2026-11-28): its words are the page header command's card
+          (PageCommand), so the icon carries no label or card of its own. */}
+      <ActionIcon
+        variant="subtle"
+        aria-label={t("graph3d.productMap")}
         onClick={() => setOpen(true)}
         data-testid="product-map-open"
       >
-        {t("graph3d.productMap")}
-      </Button>
+        <Network size={14} />
+      </ActionIcon>
       <OntologyModal
         opened={open}
         onClose={() => setOpen(false)}
