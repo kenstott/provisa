@@ -68,6 +68,21 @@ ANSWERED = [
         for special in ("Infinity", "-Infinity")
         for kind in ("real", "double precision")
     ],
+    *[  # a NULL argument is a NULL answer, as PostgreSQL's strict functions answer
+        (f"SELECT pg_catalog.{f} AS v", (None, None))
+        for n in ("4", "8")
+        for kind in (("real",) if n == "4" else ("double precision",))
+        for money, number in (
+            ("NULL::money", f"NULL::{kind}"),
+            ("NULL::money", f"'2.5'::{kind}"),
+            ("'12.34'::money", f"NULL::{kind}"),
+        )
+        for f in (
+            f"cash_mul_flt{n}({money}, {number})",
+            f"cash_div_flt{n}({money}, {number})",
+            f"flt{n}_mul_cash({number}, {money})",
+        )
+    ],
     ("SELECT max(c) AS v FROM (VALUES ('$1.5'::money), ('$1.50'::money)) AS t(c)", ("$1.50", "96")),
     (
         "SELECT min(c) AS v FROM (VALUES ('$0.005'::money), ('$0.01'::money)) AS t(c)",

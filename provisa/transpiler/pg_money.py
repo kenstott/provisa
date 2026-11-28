@@ -378,19 +378,18 @@ def _rint(value: exp.Expr, dialect: str) -> exp.Expr:
 def _rounded(cents: exp.Expr, dialect: str) -> exp.Expr:
     """A cents double, rounded as cash.c rounds it, as the base; PostgreSQL's error outside int8."""
     # Not isFinite: the transpiler reads that name as PostgreSQL's isfinite of a timestamp.
-    finite = exp.Not(
-        this=exp.Paren(
-            this=exp.or_(
-                exp.Anonymous(this="isNaN", expressions=[cents.copy()]),
-                exp.Anonymous(this="isInfinite", expressions=[cents.copy()]),
-            )
+    special = exp.Paren(
+        this=exp.or_(
+            exp.Anonymous(this="isNaN", expressions=[cents.copy()]),
+            exp.Anonymous(this="isInfinite", expressions=[cents.copy()]),
         )
     )
     if dialect == "clickhouse":
         # ClickHouse evaluates every branch whatever the guard says, and a NaN or an infinity
         # raises CH407 where a branch casts it to a decimal (round does): the branches read a
-        # finite stand-in where the double is not finite, and the guard raises for it.
-        cents = exp.Anonymous(this="if", expressions=[finite.copy(), cents, exp.Literal.number(0)])
+        # finite stand-in where the double is not finite, and the guard raises for it. The test
+        # is for the special values, so a NULL (whose test is NULL, read as false) stays NULL.
+        cents = exp.Anonymous(this="if", expressions=[special.copy(), exp.Literal.number(0), cents])
     whole = _rint(cents, dialect)
     # On Trino a whole double is exact as a bigint, where its cast to a decimal is not (_rint).
     exact = _as(whole, "BIGINT") if dialect in _TRINO else whole
@@ -403,7 +402,7 @@ def _rounded(cents: exp.Expr, dialect: str) -> exp.Expr:
         exp.LT(this=whole.copy(), expression=exp.Neg(this=limit.copy())),
     )
     if dialect == "clickhouse":  # a NaN compares false to both bounds
-        outside = exp.or_(exp.Not(this=finite.copy()), outside)
+        outside = exp.or_(special.copy(), outside)
     guarded = _guarded(outside, value, "22003", "money out of range", dialect)
     return exp.Cast(this=guarded, to=_base())
 
