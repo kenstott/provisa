@@ -705,6 +705,53 @@ def flagged(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return _first_match(value, pattern, replacement, dialect)
 
 
+#: The flags DuckDB's every-match form reads here: g with i or c (the last winning) and t.
+_DUCKDB_FLAGS = frozenset((_EVERY, _NO_CASE, _CASE, _TIGHT))
+#: A replacement's part that is the empty text on an empty match: \1 to \9 and \&.
+_EMPTY_ON_EMPTY = re.compile(r"\\[1-9&]")
+
+
+def _empty_on_empty_match(replacement: str) -> bool:
+    """Whether ``replacement`` is the empty text where the match and each group are."""
+    return _EMPTY_ON_EMPTY.sub("", replacement) == ""
+
+
+def _duckdb_every(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """With the g flag, a pattern matching the empty text searched as PostgreSQL searches it.
+
+    The form is pg_forms_system.duckdb_every_match. None (DuckDB's own,
+    which is PostgreSQL's) for another flag, flags that are no literal, and a literal replacement
+    that is the empty text on an empty match: RE2's search differs only in an empty match that
+    ends where a non-empty match ended, and replacing it with nothing changes nothing."""
+    if not isinstance(node, exp.RegexpReplace):
+        return None
+    said = node.args.get("modifiers")
+    if said is None or _is_null(said):
+        return None
+    flags = said_text(said)
+    if not (isinstance(flags, exp.Literal) and flags.is_string):
+        return None
+    if _EVERY not in flags.this or not set(flags.this) <= _DUCKDB_FLAGS:
+        return None
+    said_replacement = said_text(node.args["replacement"])
+    if (
+        isinstance(said_replacement, exp.Literal)
+        and said_replacement.is_string
+        and _empty_on_empty_match(said_replacement.this)
+    ):
+        return None
+    _, no_case = _flags(said, dialect)
+    pattern = said_text(node.expression)
+    return graft(
+        replacement(pg_forms_system.duckdb_every_match(), "duckdb", "f($v, $p, $r)"),
+        {
+            "v": node.this,
+            "p": _no_case(pattern) if no_case else pattern,
+            "r": node.args["replacement"],
+        },
+    )
+
+
 #: What a literal pattern on ClickHouse is answered within: text without the characters a locale
 #: classes by the database's locale (are_re2.Re2.bound), each refused at run time by name.
 _CH_LOCALE_BOUNDS = (
@@ -743,6 +790,15 @@ _CH_NO_RE2 = (
     "lookbehind, a basic or extended expression (b, e), a named collating element, \\m or \\M "
     "beside what may not be a word character, and \\S in a complemented bracket expression are "
     "refused by name: RE2 has no form of them."
+)
+
+#: DuckDB's every match (_duckdb_every).
+_DUCKDB_EVERY = Limitation(
+    "With the g flag, a pattern that matches the empty text is searched as PostgreSQL searches it "
+    "where the text holds a match that is not empty: each empty match replaced, one at the end of "
+    "a non-empty match among them, which RE2's search goes past. There a replacement holding \\0, "
+    "which RE2 reads as the match and PostgreSQL copies as written, raises 0A000 when it runs.",
+    Refusal("0A000", "regexp_replace does not read this value"),
 )
 
 _LIMITATIONS = {
@@ -786,7 +842,8 @@ _LIMITATIONS = {
             "group's part of the match by the group's own preference.",
         ),
         *_CH_LOCALE_BOUNDS,
-    )
+    ),
+    "duckdb": (_DUCKDB_EVERY,),
 }
 
 REGEXP_REPLACE = Feature(
@@ -800,7 +857,8 @@ REGEXP_REPLACE = Feature(
             # (transpile._no_flags_said): one of three arguments a rewrite writes is every match.
             Rule(
                 "regexp_replace($s, $p, $r, $f::text)",
-                dict.fromkeys(_FLAGS_READ_HERE, Rewrite(flagged)),
+                dict.fromkeys(_FLAGS_READ_HERE, Rewrite(flagged))
+                | {"duckdb": Rewrite(_duckdb_every)},
             ),
         ),
         limitations=_LIMITATIONS,

@@ -113,7 +113,8 @@ def test_a_column_is_refused_by_name_for_its_storage_is_its_sources(sql: str, di
 
 @pytest.mark.parametrize(
     ("pattern", "replacement"),
-    [("^a", "x"), (r"\bb", "x"), ("b*", "x"), ("b", r"\&"), ("b", r"\\")],
+    # A pattern that matches the empty text is answered (test_polyfill_regex_empty_alternative).
+    [("^a", "x"), (r"\bb", "x"), ("b", r"\&"), ("b", r"\\")],
 )
 def test_what_a_search_keeps_of_its_place_is_refused_by_name(pattern: str, replacement: str):
     sql = f"SELECT regexp_replace('abc', '{pattern}', '{replacement}', 1, 1) AS v"
