@@ -23,6 +23,8 @@ process is ``every``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 EVERY = "every"
 QUERY = "query"
 COORDINATOR = "coordinator"
@@ -85,12 +87,14 @@ class QueryServesNoUi(RuntimeError):
         )
 
 
-def refuse_ui_request(ui_address: str | None) -> None:
+def refuse_ui_request(ui_address: Callable[[], str | None]) -> None:
     """Refuse a request for the UI or the UI's backend when this process is a query node.
-    ``ui_address`` is the stable address the UI is served at (``mail.base_url``), named in the
-    refusal. Called by the HTTP gate (``provisa.api.query_gate``) before anything is read."""
+    ``ui_address`` reads the stable address the UI is served at (``mail.base_url``), named in the
+    refusal. It is called only on a query node: a standalone UI process loads no config, so reading
+    the address anywhere else would ask for one. Called by the HTTP gate
+    (``provisa.api.query_gate``) before anything is read."""
     if _mode == QUERY:
-        raise QueryServesNoUi(ui_address)
+        raise QueryServesNoUi(ui_address())
 
 
 def runs_background_work() -> bool:

@@ -18,6 +18,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
+import textwrap
 
 import pytest
 
@@ -162,14 +166,59 @@ def test_a_refusal_before_the_config_is_loaded_names_the_setting(in_mode):
 
 
 def test_refuse_ui_request_is_silent_off_query_nodes(in_mode):
+    def never_read() -> str | None:
+        raise AssertionError("the UI address is read only on a query node")
+
     for mode in (process_mode.EVERY, process_mode.COORDINATOR):
         in_mode(mode)
-        process_mode.refuse_ui_request(_UI)
+        process_mode.refuse_ui_request(never_read)
     in_mode(process_mode.QUERY)
     with pytest.raises(process_mode.QueryServesNoUi) as refused:
-        process_mode.refuse_ui_request(_UI)
+        process_mode.refuse_ui_request(lambda: _UI)
     assert refused.value.code == "node.query_serves_no_ui"
     assert refused.value.ui_address == _UI
+
+
+# A standalone UI process (``uvicorn provisa.ui_server:app``, the provisa-ui compose services) has
+# no PROVISA_CONFIG and runs in the default mode. Run in a fresh interpreter so the check of
+# sys.modules sees only what the UI server itself imported.
+_STANDALONE_UI = textwrap.dedent(
+    """
+    import sys
+    from pathlib import Path
+
+    from starlette.testclient import TestClient
+
+    import provisa.ui_server as ui_server
+
+    static = Path(sys.argv[1])
+    (static / "assets").mkdir()
+    (static / "index.html").write_text("<html>shell</html>")
+    (static / "assets" / "index.js").write_text("console.log(1)")
+    ui_server.STATIC_DIR = static
+
+    client = TestClient(ui_server.app)
+    page = client.get("/", headers={"sec-fetch-dest": "document"})
+    asset = client.get("/assets/index.js")
+    assert page.status_code == 200 and "shell" in page.text, (page.status_code, page.text)
+    assert asset.status_code == 200 and asset.text == "console.log(1)", asset.status_code
+    assert "provisa.api.app" not in sys.modules, "the UI server imported provisa.api.app"
+    print("served")
+    """
+)
+
+
+def test_a_standalone_ui_server_serves_without_a_config(tmp_path):
+    env = {k: v for k, v in os.environ.items() if k != "PROVISA_CONFIG"}
+    run = subprocess.run(
+        [sys.executable, "-c", _STANDALONE_UI, str(tmp_path)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert run.returncode == 0, run.stderr[-4000:]
+    assert run.stdout.strip().endswith("served")
 
 
 def _mounted_paths(app) -> list[str]:

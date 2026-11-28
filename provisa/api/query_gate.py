@@ -73,7 +73,7 @@ class QueryUiGate:
     """ASGI middleware refusing the UI and the UI's backend on a query node, by name.
 
     ``refuses`` says which paths are the UI's (:func:`is_ui_path` on the API, every path on the UI
-    server); ``ui_address`` reads the address the UI is served at, at the time of the refusal."""
+    server); ``ui_address`` reads the address the UI is served at, only when a query node refuses."""
 
     def __init__(
         self,
@@ -89,7 +89,7 @@ class QueryUiGate:
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         if scope["type"] == "http" and self._refuses(scope.get("path", "")):
             try:
-                process_mode.refuse_ui_request(self._ui_address())
+                process_mode.refuse_ui_request(self._ui_address)
             except process_mode.QueryServesNoUi as refused:
                 # The shape every ApiError is answered with (app._api_error_handler).
                 body = json.dumps(
