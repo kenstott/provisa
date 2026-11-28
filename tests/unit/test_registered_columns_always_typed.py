@@ -236,3 +236,40 @@ async def test_repository_refuses_an_untyped_column():
     )
     with pytest.raises(ValueError, match="t.c has no data_type"):
         await table_repo.upsert(conn, tbl)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("spelling", ["null", "NULL", "unknown", "Unknown", '"null"', "'UNKNOWN'"])
+async def test_repository_refuses_a_column_typed_as_null(spelling):
+    """REQ-1426 (amended 2026-11-28): the type of NULL is no type; refused as a missing one is."""
+    from provisa.core.repositories import table as table_repo
+
+    conn = _FakeConn()
+    conn.upsert_returning = AsyncMock(return_value=7)  # type: ignore[attr-defined]
+    tbl = Table(
+        source_id="s",
+        domain_id="d",
+        schema_name="public",
+        table_name="t",
+        columns=[Column(name="c", data_type=spelling, visible_to=[])],
+    )
+    with pytest.raises(ValueError, match="t.c is typed as NULL"):
+        await table_repo.upsert(conn, tbl)  # type: ignore[arg-type]
+    conn.upsert_returning.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_source_registration_refuses_an_introspected_null_type(monkeypatch):
+    """A source that describes a column as 'unknown' (Trino's NULL literal) leaves it unresolved."""
+    from provisa.api.admin import _table_ops
+    from provisa.api.admin.types import AvailableColumnType
+
+    async def _meta(*_a):
+        return [AvailableColumnType(name="c", data_type="unknown", comment=None)]
+
+    monkeypatch.setattr("provisa.api.admin.schema_query.resolve_available_columns_metadata", _meta)
+    cols = [Column(name="c", data_type="null", visible_to=[])]
+    inp = SimpleNamespace(source_id="s", schema_name="public", table_name="t")
+    err = await _table_ops._ensure_source_column_types(inp, cols)
+    assert err is not None and err.code == "schema.column_types_unresolved"
+    assert err.params == {"columns": "c"}

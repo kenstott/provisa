@@ -122,3 +122,13 @@ async def test_unparseable_sql_is_refused():
     out, err = await _ensure_view_column_types(conn, "NOT VALID SQL ((", cols)
     assert out == []
     assert err is not None and err.code == "schema.column_types_unresolved"
+
+
+@pytest.mark.asyncio
+async def test_a_null_typed_view_column_is_unresolved_not_stored():
+    """REQ-1426 (amended 2026-11-28): SELECT NULL AS x has the type of NULL, which is no type."""
+    conn = _conn_with_rows([])
+    cols = [Column(name="x", data_type="null", visible_to=[])]
+    out, err = await _ensure_view_column_types(conn, "SELECT NULL AS x", cols)
+    assert out == []
+    assert err is not None and err.code == "schema.column_types_unresolved"
