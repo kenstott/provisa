@@ -44,12 +44,16 @@
 # providers (.terraform/providers), by default terraform/gcp-saas in this repository's primary
 # checkout, where the deployment is applied from. A variable the tag's module requires that those
 # files do not set is given as TF_VAR_<name>, or the render fails naming it.
-set -euo pipefail
+set -Eeuo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE="$(mktemp -d)"
 KEEPALIVE_PID=""
 trap '[ -z "$KEEPALIVE_PID" ] || kill "$KEEPALIVE_PID" 2>/dev/null; rm -rf "$STAGE"' EXIT
+# Every step refuses by name, and this names whatever `set -e` stops on that a step did not: the
+# 513 deploy ended with status 1 right after "== commerce env" and nothing said why (a read of a
+# missing .env under pipefail). -E carries the trap into functions and command substitutions.
+trap 'echo "deploy: stopped at line $LINENO, exit $?: $BASH_COMMAND" >&2' ERR
 # shellcheck source=cloud-node-lib.sh
 . "$REPO/scripts/cloud-node-lib.sh"
 
@@ -119,7 +123,9 @@ render_startup() {
     || { echo "render: terraform init failed:" >&2; tail -n 30 "$STAGE/tf-init.log" >&2; exit 1; }
   ( cd "$tf" && terraform plan -input=false -no-color -refresh=false -lock=false \
       -target=google_compute_instance.coordinator \
-      -var "provisa_version=$TAG" -var "github_repo=$GITHUB_REPO" -out=coordinator.tfplan ) \
+      -var "provisa_version=$TAG" -var "github_repo=$GITHUB_REPO" \
+      -var "engine_image=$IMAGE_REGISTRY/provisa-trino-engine:$TAG" \
+      -var "zaychik_image=$IMAGE_REGISTRY/provisa-zaychik:$TAG" -out=coordinator.tfplan ) \
     > "$STAGE/tf-plan.log" 2>&1 \
     || { echo "render: terraform plan failed:" >&2; grep -A12 '^Error' "$STAGE/tf-plan.log" >&2; exit 1; }
   ( cd "$tf" && terraform show -json coordinator.tfplan ) > "$STAGE/plan.json" \
@@ -138,7 +144,23 @@ render_startup() {
     || { echo "render: the rendered startup-script does not export PROVISA_VERSION=$TAG" >&2; exit 1; }
   grep -qF -- "--role control-plane" "$STARTUP" \
     || { echo "render: the rendered startup-script does not install a control plane" >&2; exit 1; }
+  check_startup_images "$STARTUP" "$TAG" || exit 1
   echo "   $(wc -l < "$STARTUP" | tr -d ' ') lines, release $TAG"
+}
+
+# The engine pods' images in the rendered startup-script are the release's. The plan pins them with
+# -var: the deployment's terraform.tfvars names whatever image its last apply ran (on 2026-11-28,
+# ghcr.io/kenstott/...:alpha.391 and zaychik alpha.344), the installer exports what the render gives
+# it, and boot's converge_boot_shard rolls the shard to exactly that. Arguments: the script, the tag.
+check_startup_images() {
+  local script="$1" tag="$2" key want have
+  for key in PROVISA_ENGINE_IMAGE:provisa-trino-engine PROVISA_ZAYCHIK_IMAGE:provisa-zaychik; do
+    want="$IMAGE_REGISTRY/${key#*:}:$tag"
+    key="${key%%:*}"
+    have="$(sed -n "s/^[[:space:]]*export $key=\"\([^\"]*\)\"[[:space:]]*$/\1/p" "$script")"
+    [ "$have" = "$want" ] \
+      || { echo "render: the rendered startup-script exports $key='${have:-<unset>}', not $want" >&2; return 1; }
+  done
 }
 
 # Every download in the rendered startup-script is an asset of the release. Arguments: the script,

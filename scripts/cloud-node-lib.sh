@@ -107,6 +107,23 @@ commerce_mode_keys() {
 # cycle, mid-deploy. Self-heal from the repo .env instead, the same shape push_mail_env already
 # uses for PROVISA_EMAIL_API_KEY -- this is the fix, not a workaround: preflight_commerce below
 # stays a hard gate for the case this truly can't heal (the value is missing from .env too).
+# The deployment's own .env: the repo .env of the PRIMARY checkout, the checkout the deployment is
+# applied from (deploy-cloud-release.sh reads its terraform state there too, CLOUD_TF_DIR). Not
+# $REPO/.env: a deploy run from a job worktree has a checkout with no .env at all. REPO_ENV
+# overrides it.
+REPO_ENV="${REPO_ENV:-$(git -C "$REPO" worktree list --porcelain | sed -n '1s/^worktree //p')/.env}"
+
+# The last value $REPO_ENV gives key $1, empty when it names none. A missing file is refused by
+# name: it is the only source of the value, and a read of a missing file under pipefail ended the
+# 513 release deploy with status 1 and no message.
+repo_env_value() {
+  [ -f "$REPO_ENV" ] || {
+    echo "$1 is not set on the node and $REPO_ENV, the only source of it, does not exist (REPO_ENV)" >&2
+    return 1
+  }
+  sed -n "s/^$1=//p" "$REPO_ENV" | tail -1
+}
+
 push_commerce_env() {
   echo "== commerce env"
   local env_dump changed=""
@@ -114,7 +131,7 @@ push_commerce_env() {
   for k in $COMMERCE_KEYS $COMMERCE_CREDENTIAL_KEYS; do
     grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" && continue
     local want
-    want="$(sed -n "s/^$k=//p" "$REPO/.env" 2>/dev/null | tail -1)"
+    want="$(repo_env_value "$k")"
     [ -n "$want" ] || continue
     echo "== commerce env: $k -> <set>"
     set_node_env "$k" "$want"

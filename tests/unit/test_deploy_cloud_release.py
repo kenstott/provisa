@@ -378,3 +378,99 @@ def test_no_check_stops_reading_a_pipe_early(path):
 def test_the_scripts_parse(path):
     done = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
+
+
+# --- the release's engine images reach the installer (the 513 deploy, 2026-11-28) ---------------
+#
+# The render planned the tag's module with the deployment's terraform.tfvars, whose engine_image
+# and zaychik_image are whatever the last apply pinned (ghcr.io/kenstott/...:alpha.391/344). The
+# rendered installer exported those, the installer's stack booted on them, and boot's
+# converge_boot_shard rolled the shard to the 391 engine: the release's own images never ran.
+
+_ENGINE = f"ghcr.io/simpleishard-llc/provisa-trino-engine:{_TAG}"
+_ZAYCHIK = f"ghcr.io/simpleishard-llc/provisa-zaychik:{_TAG}"
+
+
+def test_the_render_pins_the_release_engine_images():
+    body = _function("render_startup")
+    plan = body[body.index("terraform plan") : body.index("-out=coordinator.tfplan")]
+    assert '"engine_image=$IMAGE_REGISTRY/provisa-trino-engine:$TAG"' in plan
+    assert '"zaychik_image=$IMAGE_REGISTRY/provisa-zaychik:$TAG"' in plan
+    # And the rendered script is checked to carry them, by the function the tests below run.
+    assert 'check_startup_images "$STARTUP" "$TAG"' in body
+
+
+def _check_images(tmp_path: Path, exports: str) -> subprocess.CompletedProcess[str]:
+    script = tmp_path / "startup.sh"
+    script.write_text(_startup(extra=exports))
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"IMAGE_REGISTRY=ghcr.io/simpleishard-llc\n{_function('check_startup_images')}\n"
+            'check_startup_images "$@"',
+            "_",
+            str(script),
+            _TAG,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def test_a_rendered_installer_on_the_release_images_passes(tmp_path):
+    done = _check_images(
+        tmp_path,
+        f'    export PROVISA_ENGINE_IMAGE="{_ENGINE}"\n    export PROVISA_ZAYCHIK_IMAGE="{_ZAYCHIK}"\n',
+    )
+    assert done.returncode == 0, done.stderr
+
+
+@pytest.mark.parametrize(
+    ("exports", "named"),
+    [
+        (
+            '    export PROVISA_ENGINE_IMAGE="ghcr.io/kenstott/provisa-trino-engine:v0.1.0-alpha.391"\n'
+            f'    export PROVISA_ZAYCHIK_IMAGE="{_ZAYCHIK}"\n',
+            "PROVISA_ENGINE_IMAGE",
+        ),
+        (
+            f'    export PROVISA_ENGINE_IMAGE="{_ENGINE}"\n'
+            '    export PROVISA_ZAYCHIK_IMAGE="ghcr.io/kenstott/provisa-zaychik:v0.1.0-alpha.344"\n',
+            "PROVISA_ZAYCHIK_IMAGE",
+        ),
+        (f'    export PROVISA_ZAYCHIK_IMAGE="{_ZAYCHIK}"\n', "PROVISA_ENGINE_IMAGE"),
+    ],
+    ids=["old-engine", "old-zaychik", "no-engine"],
+)
+def test_a_rendered_installer_on_other_images_is_refused_by_name(tmp_path, exports, named):
+    done = _check_images(tmp_path, exports)
+    assert done.returncode != 0
+    assert named in done.stderr, done.stderr
+
+
+# --- every exit names its reason (the 513 deploy exited 1 after "== commerce env", silently) -----
+
+
+def test_an_unexpected_failure_names_the_command_and_line(tmp_path):
+    text = _SCRIPT.read_text()
+    assert re.search(r"^set -Eeuo pipefail$", text, re.M)
+    trap = re.search(r"^trap '[^\n]*' ERR$", text, re.M)
+    assert trap is not None, "deploy-cloud-release.sh sets no ERR trap"
+    done = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"set -Eeuo pipefail\n{trap.group(0)}\n"
+            'step() { local v; v="$(sed -n p /nonexistent/.env 2>/dev/null | tail -1)"; }\n'
+            "step\necho unreachable\n",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert done.returncode != 0
+    assert "unreachable" not in done.stdout
+    assert "/nonexistent/.env" in done.stderr, done.stderr
+    assert "line" in done.stderr, done.stderr
