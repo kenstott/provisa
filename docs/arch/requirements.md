@@ -28230,7 +28230,7 @@ Split 2026-11-27 from [REQ-2228](#REQ-2228) (dbt source type) after verification
 
 **Status:** ⚙ in-progress · **Priority:** MUST · **Type:** structural
 
-Split 2026-11-27 from [REQ-2236](#REQ-2236) (Polyfill grid (PostgreSQL behaviour on other engines)) after verification. These are the rules of [REQ-2236](#REQ-2236) not yet delivered, and [REQ-2236](#REQ-2236)'s text governs their detail. Each grid row's provenance (made and verified on, baseline pair, last verifying run) is printed on the generated pages. Engine-and-source hints are rows of the grid, each with its reproducing test, listed under each source.
+Split 2026-11-27 from [REQ-2236](#REQ-2236) (Polyfill grid (PostgreSQL behaviour on other engines)) after verification. These are the rules of [REQ-2236](#REQ-2236) not yet delivered, and [REQ-2236](#REQ-2236)'s text governs their detail. Each grid row's provenance (made and verified on, baseline pair, last verifying run) is printed on the generated pages. Engine-and-source hints are rows of the grid, each with its reproducing test, listed under each source. (Amended 2026-11-28, audit, recommended option accepted) The baseline pair is not printed on each grid row, as [REQ-2236](#REQ-2236) amended 2026-11-27 already says; the grid prints each row provenance and the engine and source hint rows.
 
 **Code:** —
 
