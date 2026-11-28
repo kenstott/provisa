@@ -210,13 +210,12 @@ def test_spg_poly_quad_compress_of_null_is_null_on_clickhouse(runtime):
     assert _one(runtime, "SELECT pg_catalog.spg_poly_quad_compress(NULL::polygon) AS v") is None
 
 
-def test_spg_poly_quad_compress_of_a_number_postgresql_writes_otherwise_is_refused(runtime):
-    error = _raised(
-        runtime, "SELECT pg_catalog.spg_poly_quad_compress('((1e20,0),(1,1))'::polygon) AS v"
-    )
-    assert (error.sqlstate, str(error)) == (
-        "0A000",
-        "spg_poly_quad_compress does not read this value",
+def test_spg_poly_quad_compress_of_a_number_postgresql_writes_as_an_exponent_answers_it(runtime):
+    """Each extreme is float8out's text (pg_forms_geometric.bounding_box), 1e+20 as PostgreSQL
+    writes it (REQ-2236)."""
+    assert (
+        _one(runtime, "SELECT pg_catalog.spg_poly_quad_compress('((1e20,0),(1,1))'::polygon) AS v")
+        == "(1e+20,1),(1,0)"
     )
 
 

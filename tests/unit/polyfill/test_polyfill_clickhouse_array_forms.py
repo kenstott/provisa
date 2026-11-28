@@ -143,6 +143,10 @@ ANSWERED = [
     (_call("width_bucket", *(f"{v}::double precision" for v in ("5.5", "0", "10")), "5"), 3),
     (_call("json_array_length", "'[1,2,3]'::json"), 3),
     (_call("json_array_length", "NULL::json"), None),
+    # An edge timestamp is held (polyfill.held_instants, REQ-2236), so isfinite answers it.
+    (_call("isfinite", "'4713-01-01 00:00:00 BC'::timestamp without time zone"), True),
+    (_call("isfinite", "'294276-12-31 23:59:59.999999'::timestamp without time zone"), True),
+    (_call("isfinite", "'infinity'::timestamp without time zone"), False),
 ]
 
 
@@ -188,12 +192,6 @@ def test_raised_as_postgresql_raises(runtime, sql, sqlstate, message):
     assert error.sqlstate == sqlstate and message in str(error), str(error)
 
 
-_OUTSIDE_STAMP = (
-    "timestamp_in() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 "
-    "has no exact form on clickhouse"
-)
-
-
 _BC = "'4713-01-01 00:00:00+00 BC'::timestamp with time zone"
 _FAR = "'294276-12-31 23:59:59.999999+00'::timestamp with time zone"
 _INFINITE = "'infinity'::timestamp with time zone"
@@ -223,11 +221,6 @@ WITHIN_BOUND = [
     (f"SELECT cardinality(pg_catalog.\"array_cat\"({_TWO}, '{{{{5,6}}}}'::integer[])) AS v",
      "0A000", "array_cat() of an array of more than one dimension read by another call has no "
      "form on clickhouse"),
-    (_call("isfinite", "'4713-01-01 00:00:00 BC'::timestamp without time zone"), "0A000",
-     _OUTSIDE_STAMP),
-    (_call("isfinite", "'294276-12-31 23:59:59.999999'::timestamp without time zone"), "0A000",
-     _OUTSIDE_STAMP),
-    (_call("isfinite", "'infinity'::timestamp without time zone"), "0A000", _OUTSIDE_STAMP),
     # The answer is the edge itself, which DateTime64 holds none of.
     (_call("timestamptz_larger", _FAR, _TSTZ), "0A000", _outside("timestamptz_larger")),
     (_call("timestamptz_larger", _TSTZ, _FAR), "0A000", _outside("timestamptz_larger")),

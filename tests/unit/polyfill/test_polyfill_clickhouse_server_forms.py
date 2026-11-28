@@ -96,16 +96,12 @@ RAISED = [  # (statement, PostgreSQL's SQLSTATE, or the row's refusal's)
     ('SELECT pg_catalog."int2"(32767.5::double precision) AS v', "22003"),
     ("SELECT pg_catalog.\"int8\"('Infinity'::real) AS v", "22003"),
     ('SELECT pg_catalog."int8"(9223372036854775807::double precision) AS v', "22003"),
-    # A date Date32 does not hold: the date row's refusal, not toDate32's parse error.
-    (
-        "SELECT pg_catalog.\"datetime_pl\"('4713-01-01 BC'::date, '12:00'::time without time "
-        "zone) AS v",
-        "0A000",
-    ),
+    # A date held outside Date32 (polyfill.held_instants): PostgreSQL's 22008 of a timestamp past
+    # its range. Its answers BC are held_instants' (test_polyfill_clickhouse_held_instants).
     (
         "SELECT pg_catalog.\"timestamp\"('5874897-12-31'::date, '12:00'::time without time "
         "zone) AS v",
-        "0A000",
+        "22008",
     ),
 ]
 

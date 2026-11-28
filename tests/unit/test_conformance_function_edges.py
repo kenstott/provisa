@@ -424,9 +424,12 @@ def test_an_edge_raise_no_limitation_of_the_row_states_is_an_error_not_within_bo
 
 
 def test_an_edge_raise_the_grid_states_of_the_values_own_reading_is_within_bound():
-    """numeric_in() of more than 38 digits is the ClickHouse numeric input row's stated error: a
-    call reading such a literal is within its bound whatever its own row states."""
-    message = "numeric_in() of a value of more than 38 digits has no exact form on clickhouse"
+    """numeric_in() of more than 38 digits on a side is the ClickHouse numeric input row's stated
+    error: a call reading such a literal is within its bound whatever its own row states."""
+    message = (
+        "numeric_in() of a value of more than 38 digits before or after its point has no exact "
+        "form on clickhouse"
+    )
     assert edges.stated_elsewhere("clickhouse", {"sqlstate": "0A000", "error": message})
     greatest = _edge(ABS, "greatest")
     raised = _raises("0A000", message)

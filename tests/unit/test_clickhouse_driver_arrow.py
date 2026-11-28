@@ -368,7 +368,9 @@ def test_a_datetime_and_a_date_read_as_the_temporals_their_integers_encode():
     )
     result = asyncio.run(_driver(client).execute("SELECT at, day, n FROM t"))
 
-    assert result.table.schema.field("at").type == pa.timestamp("s")
+    # execute holds the row read's values (clickhouse_arrow): a DateTime as microseconds, naive
+    # for UTC.
+    assert result.table.schema.field("at").type == pa.timestamp("us")
     assert result.table.schema.field("day").type == pa.date32()
     assert result.table.schema.field("n").type == pa.uint32()
     assert result.rows[0] == (datetime(2023, 11, 14, 22, 13, 20), datetime(2023, 11, 14).date(), 7)

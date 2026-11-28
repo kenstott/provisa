@@ -669,14 +669,17 @@ def test_a_recorded_date_bc_answers_on_clickhouse(sql: str):
 def test_a_date_or_timestamp_past_its_type_raises_postgresql_s_22008(
     sql: str, said: str, dialect: str
 ):
+    if dialect == "clickhouse":
+        # ClickHouse's literal reader raises it as the statement is read (REQ-2236).
+        with pytest.raises(PostgresError) as past:
+            transpile(sql, dialect, generated=False)
+        assert (past.value.sqlstate, str(past.value)) == ("22008", said)
+        return
     written = transpile(sql, dialect, generated=False)
     if dialect == "trino":
         assert "22008" in written and said in written, written[:400]
         return
     with pytest.raises(Exception) as raised:  # noqa: PT011 -- each engine raises its own
-        if dialect == "duckdb":
-            duckdb.connect().execute(written).fetchall()
-        else:
-            _on_chdb(written)
+        duckdb.connect().execute(written).fetchall()
     refusal = from_engine(raised.value)
     assert refusal is not None and (refusal.sqlstate, str(refusal)) == ("22008", said)
