@@ -4392,6 +4392,14 @@ def _after_answer_steps(
         # scheduler jobs. On the pass's background worker for every build but the boot's, as
         # the connection loop a request built on stops running when its request ends.
         await _rewire_lifecycle()
+        # REQ-2158 (amended 2026-11-27): each member whose cache never expires is type-checked
+        # once after each build, after ``announce`` derived its offers' contracts. Every worker's
+        # build schedules it, a reload included, and the scheduler's holder runs it (REQ-1900).
+        # Prod's only, as the interval checks are (``register_org_triggers``).
+        if env == PROD:
+            from provisa.dq.scan import type_check_after_build
+
+            await type_check_after_build(runtime.org_id)
 
     async def view_rebuilds() -> None:
         # REQ-2131: a change to a row rule that changes which input columns a stored view's rows
@@ -4673,6 +4681,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         from provisa.scheduler.jobs import register_org_triggers
 
         await register_org_triggers(state._scheduler, state.org_id, None)
+        # REQ-2158 (amended 2026-11-27): the boot build's after-answer pass ran before this
+        # scheduler started, so its members with no positive cache_ttl are scheduled for their
+        # one type check after that build here.
+        from provisa.dq.scan import schedule_build_type_checks
+
+        await schedule_build_type_checks(state._scheduler, state.org_id)
         # REQ-286/REQ-1266: the deployment org's live-query engine, on the process's scheduler.
         from provisa.api.app_rebuild import start_org_live_engine
 

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI, Request
@@ -201,12 +201,12 @@ class TestREQ555GrpcPersistentChannel:
         return ApprovalHookConfig(**defaults)
 
     def _make_stub(self):
-        mock_resp = AsyncMock()
+        mock_resp = MagicMock()
         mock_resp.approved = True
         mock_resp.reason = ""
         mock_resp.additional_filter = ""
-        stub = AsyncMock()
-        stub.Evaluate = AsyncMock(return_value=mock_resp)
+        stub = MagicMock()
+        stub.Evaluate = MagicMock(return_value=mock_resp)
         return stub
 
     @pytest.mark.asyncio
@@ -227,7 +227,7 @@ class TestREQ555GrpcPersistentChannel:
         )
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=mock_channel) as chan_factory,
+            patch("grpc.insecure_channel", return_value=mock_channel) as chan_factory,
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub),
         ):
             await hook.evaluate(req)
@@ -255,7 +255,7 @@ class TestREQ555GrpcPersistentChannel:
         )
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=mock_channel) as chan_factory,
+            patch("grpc.insecure_channel", return_value=mock_channel) as chan_factory,
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub),
         ):
             for _ in range(5):
@@ -264,7 +264,7 @@ class TestREQ555GrpcPersistentChannel:
         # Despite 5 calls, channel created only once
         chan_factory.assert_called_once()
         # Stub evaluated 5 times (channel was reused each time)
-        assert stub.Evaluate.await_count == 5
+        assert stub.Evaluate.call_count == 5
 
     @pytest.mark.asyncio
     async def test_channel_object_identity_preserved(self):
@@ -285,7 +285,7 @@ class TestREQ555GrpcPersistentChannel:
         )
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=sentinel_channel),
+            patch("grpc.insecure_channel", return_value=sentinel_channel),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub),
         ):
             await hook.evaluate(req)
@@ -321,7 +321,7 @@ class TestREQ555GrpcPersistentChannel:
         )
 
         with (
-            patch("grpc.aio.insecure_channel", side_effect=[channel_a, channel_b]),
+            patch("grpc.insecure_channel", side_effect=[channel_a, channel_b]),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub),
         ):
             await hook_a.evaluate(req)

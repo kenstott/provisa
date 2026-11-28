@@ -142,3 +142,18 @@ def test_provisa_run_names_the_address_its_api_listens_on(monkeypatch):
     import os
 
     assert os.environ[local_install.LOCAL_ADDRESS_ENV] == "http://127.0.0.1:8000"
+
+
+@pytest.mark.parametrize("wildcard", ["0.0.0.0", "::", ""])
+def test_a_wildcard_bind_names_localhost_not_the_bind_address(monkeypatch, wildcard):
+    # Release 513's installed host: install-host.sh runs `provisa run --host 0.0.0.0`, which stored
+    # http://0.0.0.0:8000 as server.public_url, so every subject and vocabulary IRI named an address
+    # no client reaches and the smoke's SPARQL query over http://localhost:8000/vocab/... matched
+    # nothing. A server listening on every address is reached on this host as localhost.
+    from provisa import cli
+
+    monkeypatch.delenv(local_install.LOCAL_ADDRESS_ENV, raising=False)
+    cli._name_local_address(wildcard, 8000)
+    import os
+
+    assert os.environ[local_install.LOCAL_ADDRESS_ENV] == "http://localhost:8000"
