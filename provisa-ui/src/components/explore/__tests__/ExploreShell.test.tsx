@@ -100,6 +100,8 @@ describe("ExploreSide", () => {
 
 describe("ExploreStack", () => {
   const KEY = "provisa.test.editorHeight";
+  /** The results' least, ExploreShell.tsx's RESULTS_MIN. */
+  const RESULTS_MIN = 240;
   it("shares the height between the editor and the results by dragging the divider", () => {
     render(
       <ExploreStack
@@ -123,11 +125,32 @@ describe("ExploreStack", () => {
     fireEvent.pointerDown(handle, { clientY: 350 });
     fireEvent.pointerMove(window, { clientY: 450 });
     expect(editor.style.height).toBe("400px");
-    // The results keep their least (120) below.
+    // The results keep their least (RESULTS_MIN) below.
     fireEvent.pointerMove(window, { clientY: 2000 });
-    expect(editor.style.height).toBe("580px");
+    expect(editor.style.height).toBe(`${700 - RESULTS_MIN}px`);
     fireEvent.pointerUp(window);
-    expect(localStorage.getItem(scopedKey(KEY))).toBe("580");
+    expect(localStorage.getItem(scopedKey(KEY))).toBe(String(700 - RESULTS_MIN));
+  });
+
+  // A stack shorter than the editor's kept height and the results' least: the editor gives way
+  // (it shrinks to its own least), so the results still show their grid's header and rows.
+  it("keeps the results' least on screen, not only on a drag", () => {
+    render(
+      <ExploreStack
+        storageKey={KEY}
+        initial={380}
+        min={200}
+        testId="stack"
+        editor={<span>editor</span>}
+        results={<span>results</span>}
+      />,
+    );
+    const handle = screen.getByTestId("stack-handle");
+    const editor = handle.previousElementSibling as HTMLElement;
+    const results = handle.nextElementSibling as HTMLElement;
+    expect(editor.style.height).toBe("380px");
+    expect(editor.style.minHeight).toBe("200px");
+    expect(results.style.minHeight).toBe(`${RESULTS_MIN}px`);
   });
 });
 

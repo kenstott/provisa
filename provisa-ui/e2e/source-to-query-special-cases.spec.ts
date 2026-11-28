@@ -355,7 +355,7 @@ for (const c of [
       await page.getByTestId("sources-id-input").fill(sourceId);
       await page.getByTestId("sources-type-select").selectOption(c.type);
       await fillCheckerConnection(page);
-      await submitSourceAndExpectListed(page, sourceId);
+      await submitSourceAndExpectListed(page, sourceId, { setupFlow: false });
 
       // 2. Register Table form — a checker source has no schema/table picker, only the DQ
       // contract panel; it IS the table picker (RegisterTableForm.tsx REQ-1663). Point it at an
@@ -410,7 +410,10 @@ for (const c of [
       await page.getByTestId("dq-dry-run").click();
       // The server's own answer, asserted whole: the panel renders only its message and checks,
       // so a GraphQL error or a refusal shows here with its text rather than as an empty alert.
-      const dryRunBody = (await dryRunResponse).json<{ errors?: unknown; data: { dryRunDqContract: { success: boolean } } }>();
+      const dryRunBody = (await dryRunResponse).json<{
+        errors?: unknown;
+        data: { dryRunDqContract: { success: boolean } };
+      }>();
       expect(dryRunBody.errors, JSON.stringify(dryRunBody)).toBeUndefined();
       expect(dryRunBody.data.dryRunDqContract.success, JSON.stringify(dryRunBody)).toBe(true);
       await expect(page.getByTestId("dq-dry-run-result")).toBeVisible({ timeout: 30000 });

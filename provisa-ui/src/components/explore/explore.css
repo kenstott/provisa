@@ -70,16 +70,16 @@
   flex-direction: column;
   overflow: hidden;
 }
+/* The editor's height is the viewer's; it shrinks, to its own least (inline), when the stack is too
+   short for it and the results' least (inline, RESULTS_MIN). */
 .explore-stack__editor {
-  flex: 0 0 auto;
-  min-height: 0;
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .explore-stack__results {
   flex: 1 1 0;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
