@@ -59,7 +59,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "pages/tables/VectorModelCell.tsx": "one reusable control, placed by the form that uses it",
   "pages/tables/NumericSizeInputs.tsx": "one reusable control, placed by the form that uses it",
   "components/GovernedTableViewer.tsx": "the filter above a data preview",
-  "components/NavBar.tsx": "the do-not-ask-again tick of the sign-out dialog",
+  "components/NavBarDomainList.tsx":
+    "the Domains filter in the page header's Domains menu, each tick applied on its click",
   "components/SourceTypePicker.tsx": "the search box of the source-type picker",
   "components/graph/canvas/ResultGraphControls.tsx": "a slider on the graph canvas",
   "components/graph/GraphFrame.tsx": "the graph toolbar",
