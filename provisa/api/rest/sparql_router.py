@@ -540,6 +540,36 @@ async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135
     )
 
 
+class CypherText(BaseModel):  # REQ-2136
+    """A Cypher read to write as SPARQL."""
+
+    cypher: str
+
+
+@router.post("/data/sparql/of-cypher")
+async def sparql_of_cypher(request: Request, body: CypherText) -> Response:  # REQ-2136
+    """``body``'s Cypher read written as SPARQL over the caller's role's vocabulary, by the export
+    a GraphQL read's SPARQL is written by (dev_queries._compile_sparql_for_result): a view that
+    states its own Cypher (the ontology's walk, REQ-2174) opens as SPARQL from it. Its answer is
+    ``{sparql, sparql_error}``: a read with no exact SPARQL form says why, as a compile does."""
+    from fastapi.responses import JSONResponse
+
+    from provisa.api.admin.dev_queries import _compile_sparql_for_result
+    from provisa.api.app import state
+    from provisa.api.role_surface import role_surface
+
+    role_id = _resolve_role_id(request, state)
+    surface = role_surface(state, role_id)
+    if surface is None:
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
+    sparql, why = await _compile_sparql_for_result(
+        body.cypher, None, surface.context, state, role_id
+    )
+    return JSONResponse({"sparql": sparql, "sparql_error": why})
+
+
 class RdfExportRequest(BaseModel):  # REQ-2165
     """What an export holds: ``scope`` the whole graph, a domain (``value`` its id) or a class
     (``value`` its IRI), at the time travel ``as_of`` and ``as_recorded`` give (REQ-1163)."""

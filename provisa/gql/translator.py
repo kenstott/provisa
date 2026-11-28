@@ -1492,8 +1492,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 sub_sql = _with_uncut_column(sub_sql)
             self._graph_vars.update(sub_graph_vars)
             # If the sub-branch has a per-branch LIMIT/SKIP, wrap it in a subquery so
-            # the limit applies only to that branch, not the whole union.
-            if sub_ast.limit is not None or sub_ast.skip is not None:
+            # the limit applies only to that branch, not the whole union. A branch with its own
+            # WITH (a walk's recursive CTE) is wrapped too: SQL writes a WITH only at the head of
+            # a statement or a subquery, never after UNION.
+            if (
+                sub_ast.limit is not None
+                or sub_ast.skip is not None
+                or sub_sql.args.get("with_") is not None
+            ):
                 sub_sql = exp.select(exp.Star()).from_(
                     exp.alias_(exp.Subquery(this=sub_sql), alias=f"_ub{i}")
                 )

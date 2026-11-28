@@ -1,0 +1,109 @@
+{
+  "graph": { "label": "Term", "links": ["KIND_OF", "RELATED_TO"] },
+  "walks": [
+    {
+      "name": "Hops 0 from one root",
+      "writer": "walk",
+      "roots": [1],
+      "depth": 0,
+      "edgeTypes": [],
+      "cypher": "MATCH (a:Term {id: 1}) OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN DISTINCT a, r, b"
+    },
+    {
+      "name": "Hops 1 from one root",
+      "writer": "walk",
+      "roots": [1],
+      "depth": 1,
+      "edgeTypes": [],
+      "cypher": "MATCH (t:Term {id: 1})-[:KIND_OF|RELATED_TO*0..1]-(a:Term) OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN DISTINCT a, r, b"
+    },
+    {
+      "name": "Hops 2 from one root",
+      "writer": "walk",
+      "roots": [1],
+      "depth": 2,
+      "edgeTypes": [],
+      "cypher": "MATCH (t:Term {id: 1})-[:KIND_OF|RELATED_TO*0..2]-(a:Term) OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN DISTINCT a, r, b"
+    },
+    {
+      "name": "Hops 3 from one root",
+      "writer": "walk",
+      "roots": [1],
+      "depth": 3,
+      "edgeTypes": [],
+      "cypher": "MATCH (t:Term {id: 1})-[:KIND_OF|RELATED_TO*0..3]-(a:Term) OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN DISTINCT a, r, b"
+    },
+    {
+      "name": "All hops from one root: to the end of its connected part",
+      "writer": "walk",
+      "roots": [1],
+      "depth": 4,
+      "edgeTypes": [],
+      "cypher": "MATCH (t:Term {id: 1})-[:KIND_OF|RELATED_TO*0..4]-(a:Term) OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN DISTINCT a, r, b"
+    },
+    {
+      "name": "Hops 0 from several roots",
+      "writer": "walk",
+      "roots": [6, 1],
+      "depth": 0,
+      "edgeTypes": [],
+      "cypher": "MATCH (a:Term) WHERE a.id IN [1, 6] OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN DISTINCT a, r, b"
+    },
+    {
+      "name": "Hops 2 from several roots",
+      "writer": "walk",
+      "roots": [6, 1, 6],
+      "depth": 2,
+      "edgeTypes": [],
+      "cypher": "MATCH (t:Term)-[:KIND_OF|RELATED_TO*0..2]-(a:Term) WHERE t.id IN [1, 6] OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN DISTINCT a, r, b"
+    },
+    {
+      "name": "All hops from several roots",
+      "writer": "walk",
+      "roots": [1, 8],
+      "depth": 4,
+      "edgeTypes": [],
+      "cypher": "MATCH (t:Term)-[:KIND_OF|RELATED_TO*0..4]-(a:Term) WHERE t.id IN [1, 8] OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN DISTINCT a, r, b"
+    },
+    {
+      "name": "Hops 2 over one link type",
+      "writer": "walk",
+      "roots": [1],
+      "depth": 2,
+      "edgeTypes": ["KIND_OF"],
+      "cypher": "MATCH (t:Term {id: 1})-[:KIND_OF*0..2]-(a:Term) OPTIONAL MATCH (a)-[r:KIND_OF]->(b:Term) RETURN DISTINCT a, r, b"
+    },
+    {
+      "name": "No link type kept: the roots alone",
+      "writer": "walk",
+      "roots": [1, 6],
+      "depth": 2,
+      "edgeTypes": ["PART_OF"],
+      "cypher": "MATCH (a:Term) WHERE a.id IN [1, 6] RETURN a"
+    },
+    {
+      "name": "No root: no term",
+      "writer": "walk",
+      "roots": [],
+      "depth": 1,
+      "edgeTypes": [],
+      "cypher": "MATCH (a:Term) WHERE a.id IN [] RETURN a"
+    },
+    {
+      "name": "A focus: the terms drawn and the links between them",
+      "writer": "drawn",
+      "roots": [3, 2, 1],
+      "depth": 0,
+      "edgeTypes": [],
+      "cypher": "MATCH (a:Term) WHERE a.id IN [1, 2, 3] OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) WHERE b.id IN [1, 2, 3] RETURN a, r, b"
+    },
+    {
+      "name": "A focus over one link type",
+      "writer": "drawn",
+      "roots": [1, 2, 3],
+      "depth": 0,
+      "edgeTypes": ["RELATED_TO"],
+      "cypher": "MATCH (a:Term) WHERE a.id IN [1, 2, 3] OPTIONAL MATCH (a)-[r:RELATED_TO]->(b:Term) WHERE b.id IN [1, 2, 3] RETURN a, r, b"
+    }
+  ]
+}

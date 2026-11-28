@@ -23,11 +23,24 @@ The SELECT answers what the statement does when the SPARQL front end reads it ba
   same rows either way.
 - The statement's WHERE is the query's FILTER; DISTINCT, an aggregate (COUNT, MIN, MAX) and its
   grouping, ORDER BY, SKIP and LIMIT are the query's own.
+- An inline property map on a node is the equality it means in a read, which the Cypher parser has
+  already written into its match's WHERE (provisa.cypher.parser.with_inline_conditions).
+- A whole node returned is its subject IRI; a relationship variable returned is its type's
+  predicate IRI, BOUND beside its triple. A relationship variable of several types, or one an
+  OPTIONAL MATCH binds, is one branch per type, each the statement's patterns with that type's
+  triple, joined by UNION; an OPTIONAL one adds the branch where no type matched (FILTER NOT
+  EXISTS of each). It is the statement's last step, and the only OPTIONAL one.
+- A variable-length relationship with no variable, in a statement whose rows are DISTINCT, is a
+  property path: its types an alternative, each walked as written (``^`` against its direction,
+  both ways when undirected), repeated within its bounds -- ``min`` steps, then each step to
+  ``max`` an optional one nested in the one before (``(S/(S)?)?``), so each level reaches each
+  pair of ends once (REACH). Under DISTINCT the rows are the pairs of ends either way: a walk to a
+  node within the bound has a shortest one, which repeats no relationship.
 - ORDER BY is the statement's own: the front end orders by the same keys, so nulls fall where
   the statement's own engine puts them.
 
-Anything else -- a nested list, a map, CASE, a function, arithmetic, a path, an undirected or
-variable-length relationship, WITH, UNWIND, UNION, a parameter -- is refused, naming it.
+Anything else -- a nested list, a map, CASE, a function, arithmetic, a path variable, an
+undirected fixed relationship, WITH, UNWIND, UNION, a parameter -- is refused, naming it.
 """
 
 # Requirements: REQ-2136, REQ-2135
@@ -69,6 +82,13 @@ def _var_name(text: str) -> str:
     return name if name and not name[0].isdigit() else f"v_{name}"
 
 
+def _prefix_name(text: str) -> str:
+    """``text`` as a PREFIX name, which starts with a letter (SPARQL's PN_PREFIX): a table named
+    ``_terms`` is ``terms``."""
+    name = _NAME.sub("_", text).lstrip("_")
+    return name if name and name[0].isalpha() else f"n{name}"
+
+
 def _string(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
     return f'"{escaped.replace(chr(13), "\\r")}"'
@@ -83,12 +103,21 @@ class _Group:
     properties: list[str] = field(default_factory=list)
     filters: list[str] = field(default_factory=list)
     optionals: list["_Group"] = field(default_factory=list)
+    #: ``BIND(... AS ?v)`` lines: a relationship variable's predicate.
+    binds: list[str] = field(default_factory=list)
+    #: Groups none of whose solutions may hold (``FILTER NOT EXISTS``).
+    absent: list["_Group"] = field(default_factory=list)
 
     def lines(self, indent: str) -> list[str]:
         out = [f"{indent}{t}" for t in self.triples]
+        out += [f"{indent}{b}" for b in self.binds]
         out += [f"{indent}OPTIONAL {{ {p} }}" for p in self.properties]
         for g in self.optionals:
             out.append(f"{indent}OPTIONAL {{")
+            out += g.lines(indent + "  ")
+            out.append(f"{indent}}}")
+        for g in self.absent:
+            out.append(f"{indent}FILTER NOT EXISTS {{")
             out += g.lines(indent + "  ")
             out.append(f"{indent}}}")
         out += [f"{indent}FILTER({f})" for f in self.filters]
@@ -107,15 +136,35 @@ class _Printer:
         self.prefixes: dict[str, str] = {}
         #: The properties the statement returns: each is bound under the name it returns.
         self.wanted: set[tuple[str, str]] = set()
+        #: Each relationship variable, by the SPARQL variable its predicate is bound to.
+        self.rels: dict[str, str] = {}
+        #: The statement's rows are DISTINCT: a variable-length relationship is a property path.
+        self.distinct = False
+
+    def snapshot(self) -> tuple:
+        """The names and bindings so far, to print a branch from (:meth:`restore`)."""
+        return (
+            dict(self.label),
+            dict(self.group),
+            dict(self.bound),
+            set(self.names),
+            dict(self.rels),
+        )
+
+    def restore(self, snap: tuple) -> None:
+        label, group, bound, names, rels = snap
+        self.label, self.group, self.bound = dict(label), dict(group), dict(bound)
+        self.names, self.rels = set(names), dict(rels)
 
     def prefix(self, wanted: str, ns: str) -> None:
         """A PREFIX for ``ns``, named ``wanted`` unless that name is another's."""
         if ns in self.prefixes.values():
             return
-        name, n = _var_name(wanted), 1
+        stem = _prefix_name(wanted)
+        name, n = stem, 1
         while name in self.prefixes:
             n += 1
-            name = f"{_var_name(wanted)}{n}"
+            name = f"{stem}{n}"
         self.prefixes[name] = ns
 
     # -- names --
@@ -145,8 +194,7 @@ class _Printer:
     # -- patterns --
 
     def node(self, n: NodePattern, group: _Group) -> str:
-        if n.properties or n.property_text:
-            raise SparqlExportRefused("An inline property map on a node has no SPARQL form here")
+        # An inline property map is already its match's WHERE (with_inline_conditions).
         if n.variable is None:
             raise SparqlExportRefused("A node with no variable has no SPARQL form here")
         var = n.variable
@@ -164,26 +212,75 @@ class _Printer:
         group.triples.append(f"?{_var_name(var)} a {self._iri(cls)} .")
         return var
 
-    def edge(self, left: str, rel: RelPattern, right: str, group: _Group) -> None:
-        if rel.variable is not None:
-            raise SparqlExportRefused("A relationship variable has no SPARQL form here")
-        if rel.path is not None or rel.variable_length or rel.min_hops or rel.max_hops:
-            raise SparqlExportRefused("A path or a variable-length relationship")
-        if len(rel.types) != 1:
-            raise SparqlExportRefused("A relationship of no type or of several types")
-        if rel.properties or rel.property_text:
-            raise SparqlExportRefused("An inline property map on a relationship")
-        if rel.direction == "none":
-            raise SparqlExportRefused("An undirected relationship")
-        src, dst = (left, right) if rel.direction == "right" else (right, left)
-        iri = edge_iri(self.vocab.base, rel.types[0])
+    def _predicate(self, rel_type: str, src: str, dst: str) -> str:
+        """The predicate of ``rel_type`` from node ``src`` to node ``dst``."""
+        iri = edge_iri(self.vocab.base, rel_type)
         ends = (self.label[src], self.label[dst])
         if not any((e.source, e.target) == ends for e in self.vocab.edges.get(iri, [])):
             raise SparqlExportRefused(
-                f"The relationship {rel.types[0]} from {ends[0]} to {ends[1]} has no SPARQL "
-                "predicate"
+                f"The relationship {rel_type} from {ends[0]} to {ends[1]} has no SPARQL predicate"
             )
-        group.triples.append(f"?{_var_name(src)} {self._iri(iri)} ?{_var_name(dst)} .")
+        return self._iri(iri)
+
+    def edge(self, left: str, rel: RelPattern, right: str, group: _Group) -> None:
+        if rel.path is not None:
+            raise SparqlExportRefused("A path or a variable-length relationship")
+        if rel.properties or rel.property_text:
+            raise SparqlExportRefused("An inline property map on a relationship")
+        if rel.variable_length or rel.min_hops is not None or rel.max_hops is not None:
+            self.walk(left, rel, right, group)
+            return
+        if len(rel.types) != 1:
+            raise SparqlExportRefused("A relationship of no type or of several types")
+        if rel.direction == "none":
+            raise SparqlExportRefused("An undirected relationship")
+        src, dst = (left, right) if rel.direction == "right" else (right, left)
+        predicate = self._predicate(rel.types[0], src, dst)
+        group.triples.append(f"?{_var_name(src)} {predicate} ?{_var_name(dst)} .")
+        if rel.variable is not None:
+            # A relationship returned is its type's predicate.
+            if rel.variable in self.label or rel.variable in self.rels:
+                raise SparqlExportRefused(f"The relationship {rel.variable} is matched twice")
+            name = self._fresh(rel.variable)
+            self.rels[rel.variable] = name
+            group.binds.append(f"BIND({predicate} AS ?{name})")
+
+    def walk(self, left: str, rel: RelPattern, right: str, group: _Group) -> None:
+        """A variable-length relationship as a property path (the module's rule)."""
+        if rel.variable is not None:
+            raise SparqlExportRefused("A variable-length relationship variable")
+        if not rel.types:
+            raise SparqlExportRefused("A variable-length relationship of no type")
+        if not self.distinct:
+            raise SparqlExportRefused(
+                "A variable-length relationship in a statement whose rows are not DISTINCT"
+            )
+        low = 1 if rel.min_hops is None else rel.min_hops
+        high = rel.max_hops
+        if high is not None and (high < low or high == 0):
+            raise SparqlExportRefused(f"A walk of {low} to {high} relationships")
+        ways: list[str] = []
+        for rel_type in rel.types:
+            iri = edge_iri(self.vocab.base, rel_type)
+            if not self.vocab.edges.get(iri):
+                raise SparqlExportRefused(f"The relationship {rel_type} has no SPARQL predicate")
+            predicate = self._iri(iri)
+            if rel.direction in ("right", "none"):
+                ways.append(predicate)
+            if rel.direction in ("left", "none"):
+                ways.append(f"^{predicate}")
+        step = f"({'|'.join(ways)})"
+        if high is None:
+            # Unbounded: as far as the walk goes, past ``low - 1`` steps.
+            parts = [step] * max(low - 1, 0) + [f"{step}{'*' if low == 0 else '+'}"]
+        else:
+            parts = [step] * low
+            if high > low:
+                nested = f"{step}?"
+                for _ in range(high - low - 1):
+                    nested = f"({step}/{nested})?"
+                parts.append(nested)
+        group.triples.append(f"?{_var_name(left)} {'/'.join(parts)} ?{_var_name(right)} .")
 
     def pattern(self, p, group: _Group) -> None:
         if not isinstance(p, PathPattern):
@@ -253,6 +350,10 @@ class _Printer:
                 left, right = self.expr(e.left, required_in), self.expr(e.right, required_in)
                 return f"{left} {_COMPARISONS[op]} {right}"
             if op == "IN" and isinstance(e.right, ListLiteral):
+                if not e.right.items:
+                    # IN an empty list holds of nothing, as false does.
+                    self.expr(e.left, required_in)
+                    return "false"
                 items = ", ".join(self.literal(i) for i in e.right.items)
                 return f"{self.expr(e.left, required_in)} IN ({items})"
             if op in _STRING_TESTS and isinstance(e.right, Literal) and e.right.kind == "string":
@@ -288,6 +389,62 @@ def _holds_map(e: object) -> bool:
     return False
 
 
+def _branched_rel(step: MatchStep) -> RelPattern | None:
+    """The relationship variable of ``step`` the query branches on, if one is: one of several
+    types, or any in an OPTIONAL MATCH (a BIND inside an OPTIONAL group is no exact form here)."""
+    optional = bool(step.matches) and all(m.optional for m in step.matches)
+    found = [
+        rel
+        for m in step.matches
+        if isinstance(m.pattern, PathPattern)
+        for rel in m.pattern.rels
+        if rel.variable is not None
+        and (len(rel.types) > 1 or optional)
+        and rel.path is None
+        and not rel.variable_length
+    ]
+    if not found:
+        return None
+    if len(found) > 1 or len(step.matches) > 1:
+        raise SparqlExportRefused("A step with a relationship variable and more patterns")
+    return found[0]
+
+
+@dataclass
+class _Branches:
+    """The groups the query's branches add to its required patterns, one per type and, for an
+    OPTIONAL MATCH, the one where none matched; ``own`` the variables only the branches bind."""
+
+    groups: list[_Group]
+    own: set[str]
+
+
+def _branches(p: _Printer, step: MatchStep, rel: RelPattern) -> _Branches:
+    optional = step.matches[0].optional
+    pattern = step.matches[0].pattern
+    assert isinstance(pattern, PathPattern)  # _branched_rel found the relationship in one
+    before = p.snapshot()
+    groups: list[_Group] = []
+    for rel_type in rel.types:
+        p.restore(before)
+        group = _Group()
+        one = dataclasses.replace(rel, types=[rel_type])
+        p.pattern(
+            dataclasses.replace(pattern, rels=[one if r is rel else r for r in pattern.rels]),
+            group,
+        )
+        if step.where is not None:
+            group.filters.append(p.expr(step.where.expression, required_in=group))
+        groups.append(group)
+    own = set(p.label) - set(before[0])
+    if optional:
+        # No type matched: each type's group, its relationship's BIND aside, holds of no solution.
+        groups.append(
+            _Group(absent=[dataclasses.replace(g, binds=[]) for g in groups[: len(rel.types)]])
+        )
+    return _Branches(groups, own)
+
+
 def ir_to_sparql(ast: CypherAST, vocab: Vocabulary, lm) -> str:
     """``ast`` as a SPARQL SELECT over ``vocab``, or :class:`SparqlExportRefused`."""
     if ast.union_parts:
@@ -308,9 +465,13 @@ def ir_to_sparql(ast: CypherAST, vocab: Vocabulary, lm) -> str:
         if isinstance(i.expression, Property) and isinstance(i.expression.obj, Variable)
     }
 
+    p.distinct = ret.distinct
     seen_optional = False
     required_where: list[CypherExpr] = []
-    for step in ast.pipeline:
+    #: The statement's last step, when it holds a relationship variable of several types or an
+    #: OPTIONAL one: a branch of the query per type (the module's rule).
+    branched: tuple[MatchStep, RelPattern] | None = None
+    for i, step in enumerate(ast.pipeline):
         if not isinstance(step, MatchStep):
             raise SparqlExportRefused(f"{type(step).__name__.removesuffix('Clause').upper()}")
         optional = bool(step.matches) and all(m.optional for m in step.matches)
@@ -319,6 +480,18 @@ def ir_to_sparql(ast: CypherAST, vocab: Vocabulary, lm) -> str:
         for m in step.matches:
             if m.variable is not None:
                 raise SparqlExportRefused("A path variable")
+        several = _branched_rel(step)
+        if several is not None:
+            if i != len(ast.pipeline) - 1:
+                raise SparqlExportRefused(
+                    "A relationship variable branched on before the statement's last step"
+                )
+            if seen_optional:
+                raise SparqlExportRefused(
+                    "A relationship variable branched on after an OPTIONAL MATCH"
+                )
+            branched = (step, several)
+            break
         if optional:
             seen_optional = True
             group = _Group()
@@ -335,6 +508,7 @@ def ir_to_sparql(ast: CypherAST, vocab: Vocabulary, lm) -> str:
             if step.where is not None:
                 required_where.append(step.where.expression)
     p.main.filters += [p.expr(w) for w in required_where]
+    branches = _branches(p, *branched) if branched is not None else None
 
     select: list[str] = []
     keys: list[str] = []
@@ -357,9 +531,20 @@ def ir_to_sparql(ast: CypherAST, vocab: Vocabulary, lm) -> str:
             select.append(f"({fn}({distinct}{arg}) AS ?{name})")
             p.bound[("", item.alias or "")] = name
         elif isinstance(e, Property) and isinstance(e.obj, Variable):
+            if branches is not None and e.obj.name in branches.own:
+                raise SparqlExportRefused(
+                    f"A property of {e.obj.name}, matched in a branch per relationship type"
+                )
             v = p.prop(e.obj.name, e.name)
             select.append(f"?{v}")
             keys.append(f"?{v}")
+        elif isinstance(e, Variable) and e.name in p.label:
+            # A whole node is its subject IRI.
+            select.append(f"?{_var_name(e.name)}")
+            keys.append(f"?{_var_name(e.name)}")
+        elif isinstance(e, Variable) and e.name in p.rels:
+            select.append(f"?{p.rels[e.name]}")
+            keys.append(f"?{p.rels[e.name]}")
         elif isinstance(e, FunctionCall):
             raise SparqlExportRefused(f"The function {e.name}() has no exact SPARQL form")
         elif _holds_map(e):
@@ -381,6 +566,11 @@ def ir_to_sparql(ast: CypherAST, vocab: Vocabulary, lm) -> str:
         if isinstance(e, Variable) and ("", e.name) in p.bound:
             v = f"?{p.bound[('', e.name)]}"
         elif isinstance(e, Property) and isinstance(e.obj, Variable):
+            if branches is not None and e.obj.name in branches.own:
+                raise SparqlExportRefused(
+                    f"ORDER BY a property of {e.obj.name}, matched in a branch per relationship "
+                    "type"
+                )
             v = f"?{p.prop(e.obj.name, e.name)}"
         else:
             raise SparqlExportRefused("ORDER BY anything but a property or an aggregate")
@@ -390,7 +580,16 @@ def ir_to_sparql(ast: CypherAST, vocab: Vocabulary, lm) -> str:
     lines = [f"PREFIX {k}: <{v}>" for k, v in p.prefixes.items()]
     lines.append(f"SELECT {'DISTINCT ' if ret.distinct else ''}{' '.join(select)}")
     lines.append("WHERE {")
-    lines += p.main.lines("  ")
+    if branches is None:
+        lines += p.main.lines("  ")
+    else:
+        for n, branch in enumerate(branches.groups):
+            if n:
+                lines.append("  UNION")
+            lines.append("  {")
+            lines += p.main.lines("    ")
+            lines += branch.lines("    ")
+            lines.append("  }")
     lines.append("}")
     if aggregated and keys:
         lines.append(f"GROUP BY {' '.join(keys)}")
