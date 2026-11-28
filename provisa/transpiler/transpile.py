@@ -2282,6 +2282,13 @@ def transpile(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
             column_types,
         )
+    if target_dialect == "clickhouse":
+        # REQ-2171: two columns of one name, as PostgreSQL answers them, are two aliases there.
+        from provisa.transpiler.polyfill.clickhouse import distinct_result_names
+
+        lowered = distinct_result_names(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if target_dialect == "exasol":
         result = _exasol_stored_case(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")

@@ -72,6 +72,7 @@ from __future__ import annotations
 import calendar
 import decimal
 import functools
+import itertools
 import math
 import re
 import struct
@@ -1706,3 +1707,32 @@ def typed_null_columns(written: str, pg_sql: str) -> str:
 
 
 _MENTIONS_NULL = re.compile(r"\bNULL\b", re.IGNORECASE)
+
+
+def distinct_result_names(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each alias of a select list that another of its columns is named by renamed
+    to a name no column of the list has: PostgreSQL answers two columns of one name (``SELECT
+    j -> 1, j -> 'a'``, both ?column?), where ClickHouse refuses two expressions of one alias
+    (MULTIPLE_EXPRESSIONS_FOR_ALIAS) and reads a column of an alias's name as that alias. The
+    rows are PostgreSQL's; the renamed column's name is the one ClickHouse can answer. No
+    statement PostgreSQL runs refers to such a name: its ORDER BY of it is ambiguous (42702)."""
+    for select in tree.find_all(exp.Select):
+        names = [item.alias_or_name for item in select.expressions]
+        taken = set(names)
+        for place, item in enumerate(select.expressions):
+            name = names[place]
+            if not isinstance(item, exp.Alias) or names.count(name) == 1:
+                continue
+            first = next(
+                at for at, other in enumerate(select.expressions) if other.alias_or_name == name
+            )
+            if first == place and all(
+                isinstance(other, exp.Alias)
+                for other in select.expressions
+                if other.alias_or_name == name
+            ):
+                continue  # the first of aliases alone keeps the name
+            fresh = next(f"{name}_{n}" for n in itertools.count(1) if f"{name}_{n}" not in taken)
+            taken.add(fresh)
+            item.set("alias", exp.to_identifier(fresh, quoted=True))
+    return tree
