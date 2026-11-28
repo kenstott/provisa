@@ -276,7 +276,7 @@ export function CommandsPage() {
         schemaName: fn.schemaName,
         functionName: fn.functionName,
         returns: fn.returns,
-        visibleTo: fn.visibleTo.join(", "),
+        visibleTo: fn.visibleTo,
         domainId: fn.domainId,
         description: fn.description ?? "",
         arguments: fn.arguments.length > 0 ? fn.arguments : [],
@@ -307,7 +307,7 @@ export function CommandsPage() {
       schemaName: "public",
       functionName: "",
       returns: wh.returns ?? "",
-      visibleTo: wh.visibleTo.join(", "),
+      visibleTo: wh.visibleTo,
       domainId: wh.domainId,
       description: wh.description ?? "",
       arguments: wh.arguments.length > 0 ? wh.arguments : [],
@@ -364,7 +364,7 @@ export function CommandsPage() {
     if (!values) return;
     // An entered code command's copy keeps its code in a source of its own name, made on save.
     const source = values.implKind === CODE_ENTERED ? { sourceId: "" } : {};
-    setForm({ ...values, ...source, name: `${name}_copy`, visibleTo: "" });
+    setForm({ ...values, ...source, name: `${name}_copy`, visibleTo: [] });
     setEditingName(null);
     setShowForm(true);
   };
@@ -375,10 +375,7 @@ export function CommandsPage() {
     setError("");
     setMsg("");
     try {
-      const visibleTo = form.visibleTo
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const visibleTo = form.visibleTo;
       if (form.actionType === "function" && form.implKind === CODE_ENTERED) {
         // REQ-1159 (amended 2026-11-27): the code is saved as the entered code of the source of
         // the command's name, then the command is registered on it by naming its function.

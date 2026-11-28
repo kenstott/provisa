@@ -98,7 +98,7 @@ describe("a function's read view", () => {
       ["Method", "POST"],
       ["Materialize (admin/definer identity)", "Yes"],
       ["Return Type", "Dataset (columns)"],
-      ["Visible To (roles, comma-separated)", "support"],
+      ["Visible To", "support"],
       ["Writes table", "public.orders"],
       ["Requires approval", "Yes"],
       ["Description", "Refunds an order"],
@@ -159,13 +159,13 @@ describe("a webhook's read view", () => {
       ["Method", "POST"],
       ["Timeout (ms)", "5000"],
       ["Returns (table, optional)", "—"],
-      ["Visible To (roles, comma-separated)", "all"],
+      ["Visible To", "all"],
       ["Requires approval", "No"],
       ["Description", "—"],
       ["Arguments", "—"],
     ]);
     expect(fields("webhook-read-columns-ok")).toEqual([
-      ["Visible to (roles, comma-separated; blank = everyone)", "all"],
+      ["Visible to", "all"],
       ["Mask", "1. Everyone: constant hidden"],
     ]);
   });

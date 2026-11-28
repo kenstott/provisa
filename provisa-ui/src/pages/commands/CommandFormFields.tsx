@@ -46,6 +46,7 @@ import {
 } from "./types";
 import type { FormState } from "./types";
 import { ColumnGovernanceFields } from "./ColumnGovernanceFields";
+import { MultiSelect } from "../../components/MultiSelect";
 import { physicalRelationName } from "../../naming";
 import {
   FieldGroup,
@@ -573,11 +574,11 @@ export function CommandFormFields({
                     </FormField>
                   )}
                   <FormField size="medium">
-                    <TextInput
+                    <MultiSelect
                       label={t("commandFormFields.visibleTo")}
+                      options={roleOptions}
                       value={form.visibleTo}
-                      onChange={(e) => setForm({ ...form, visibleTo: e.currentTarget.value })}
-                      placeholder={t("commandFormFields.visibleToPlaceholder")}
+                      onChange={(visibleTo) => setForm({ ...form, visibleTo })}
                     />
                   </FormField>
                 </>
@@ -679,11 +680,11 @@ export function CommandFormFields({
                     />
                   </FormField>
                   <FormField size="medium">
-                    <TextInput
+                    <MultiSelect
                       label={t("commandFormFields.visibleTo")}
+                      options={roleOptions}
                       value={form.visibleTo}
-                      onChange={(e) => setForm({ ...form, visibleTo: e.currentTarget.value })}
-                      placeholder={t("commandFormFields.visibleToPlaceholder")}
+                      onChange={(visibleTo) => setForm({ ...form, visibleTo })}
                     />
                   </FormField>
                 </>

@@ -14,7 +14,8 @@
 
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Text, TextInput } from "@mantine/core";
+import { Text } from "@mantine/core";
+import { MultiSelect } from "../../components/MultiSelect";
 import { MaskListEditor } from "../../components/MaskListEditor";
 import type { MaskEntry } from "../../lib/masks";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
@@ -25,12 +26,6 @@ export interface GovernedColumn {
   visible_to?: string[] | null;
   masks?: MaskEntry[];
 }
-
-const splitRoles = (s: string): string[] =>
-  s
-    .split(",")
-    .map((r) => r.trim())
-    .filter(Boolean);
 
 interface Props {
   col: GovernedColumn;
@@ -54,15 +49,12 @@ export function ColumnGovernanceFields({
       data-testid={testId}
     >
       <FormField size="long">
-        <TextInput
+        <MultiSelect
           label={t("commandFormFields.colVisibleTo")}
-          placeholder={t("commandFormFields.colVisibleToPlaceholder")}
-          value={(col.visible_to ?? []).join(", ")}
-          onChange={(e) => {
-            const roles = splitRoles(e.currentTarget.value);
-            onChange({ visible_to: roles.length ? roles : null });
-          }}
-          data-testid={`${testId}-visible-to`}
+          options={roleOptions}
+          value={col.visible_to ?? []}
+          // No grant list is the command's public shape (REQ-1679), so none is stored as null.
+          onChange={(roles) => onChange({ visible_to: roles.length ? roles : null })}
         />
       </FormField>
       <FormField size="full">

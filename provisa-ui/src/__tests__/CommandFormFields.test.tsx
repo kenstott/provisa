@@ -13,7 +13,7 @@
 
 import { useState } from "react";
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "../test-utils/render";
+import { fireEvent, render, screen, within } from "../test-utils/render";
 import { CommandFormFields } from "../pages/commands/CommandFormFields";
 import { EMPTY_FORM } from "../pages/commands/types";
 import { editorOf, languageOf, typeInto } from "../test-utils/codeEditor";
@@ -186,7 +186,9 @@ describe("CommandFormFields — response governance (REQ-1679)", () => {
       />,
     );
     expect(screen.getByTestId("output-column-0")).toBeInTheDocument();
-    expect(screen.queryByTestId("output-column-governance-0-visible-to")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("output-column-0")).queryByRole("textbox", { name: "Visible to" }),
+    ).not.toBeInTheDocument();
   });
 
   it("offers the same controls on each inline return field of a webhook", () => {
@@ -199,7 +201,11 @@ describe("CommandFormFields — response governance (REQ-1679)", () => {
         }}
       />,
     );
-    expect(screen.getByTestId("inline-field-governance-0-visible-to")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("inline-field-governance-0")).getByRole("textbox", {
+        name: "Visible to",
+      }),
+    ).toBeInTheDocument();
   });
 });
 

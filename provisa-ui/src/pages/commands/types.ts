@@ -53,7 +53,7 @@ export interface FormState {
   schemaName: string;
   functionName: string;
   returns: string;
-  visibleTo: string;
+  visibleTo: string[];
   domainId: string;
   description: string;
   arguments: ActionArg[];
@@ -158,7 +158,7 @@ export const EMPTY_FORM: FormState = {
   schemaName: "public",
   functionName: "",
   returns: "",
-  visibleTo: "",
+  visibleTo: [],
   domainId: "",
   description: "",
   arguments: [],
