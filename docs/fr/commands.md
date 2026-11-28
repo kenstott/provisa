@@ -32,13 +32,15 @@ Chaque argument déclare un `arg_kind` :
 | `arg_kind` | Comportement |
 | --- | --- |
 | `column_value` | Scalaire ; transmis directement dans la charge utile de la requête |
-| `table_ref` | Paresseux ; Provisa transmet la référence de relation telle quelle ; le service va chercher les données |
-| `result_set` | Empressé ; Provisa matérialise la relation référencée et envoie ses lignes |
+| `table_ref` | Paresseux ; Provisa transmet le nom de la table ; le service va chercher les données |
+| `result_set` | Empressé ; Provisa lit la relation et envoie ses lignes |
 
 Les commandes `http` et `grpc` **doivent** déclarer au moins un argument `table_ref` ou
 `result_set`. Une commande externe ne recevant que des arguments scalaires serait invoquée une fois
 par ligne, ce qui ruine le traitement par lots. Le répartiteur rejette cette configuration au
 moment de l'appel (422).
+
+Un argument de relation donné comme table la nomme par son nom logique, le `schema.table` par lequel une instruction SQL la lit (par exemple `pet_store.orders`). Une table `result_set` est lue via le pipeline gouverné en tant que rôle appelant : les filtres de lignes, les masques et la visibilité des colonnes de ce rôle s'appliquent, et seules les colonnes déclarées de l'argument sont lues. Une référence physique `source.schema.table`, ou tout nom sous lequel SQL ne sert aucune table, est refusée avec HTTP 400 en nommant la forme attendue. Un `result_set` peut aussi être donné sous forme de requête, exécutée de la même façon, ou de tableau JSON de lignes.
 
 Une commande qui renvoie un ensemble (déclaré via `output_columns` et `return_schema`) est une
 fonction table. Utilisez-la dans une clause `FROM` ou une `JOIN`.
@@ -57,7 +59,7 @@ Les deux contrats sont validés en mode « échec bruyant » à chaque invocatio
 - **Sortie :** les lignes renvoyées par la commande sont validées contre `output_columns` avant
   d'atteindre l'appelant.
 - **Projection étroite :** lorsqu'un contrat d'entrée est déclaré, la requête de matérialisation ne
-  projette **que ces colonnes** (`SELECT "id", "region" FROM ...`) plutôt que `SELECT *`.
+  projette **que ces colonnes** (`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`) plutôt que `SELECT *`.
 
 ### Le vocabulaire de types de l'IR {: #the-ir-type-vocabulary }
 
@@ -147,8 +149,8 @@ Les commandes peuvent figurer **à l'intérieur** d'une instruction SQL plus lar
 ```sql
 -- Enrich the orders relation and join the result back inline.
 SELECT o.id, o.amount, e.score, e.region_label
-FROM   orders o
-JOIN   enrich_orders('main.public.orders') e ON o.id = e.id
+FROM   pet_store.orders o
+JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
 WHERE  e.score > 0.8;
 ```
 

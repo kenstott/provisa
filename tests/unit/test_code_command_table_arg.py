@@ -36,6 +36,7 @@ from provisa.codesource.mutations import bindings
 from provisa.executor.function_dispatch import dispatch_function
 from provisa.executor.source_operation import refuse_writes_in_definition
 from provisa.lineage.graph import build_column_graph
+from tests.served_names import served_names
 
 ALL_RULES = [NODE_RULES, PYTHON_RULES, GO_RULES]
 ORDER = {"kind": "ref", "name": "Order"}
@@ -232,6 +233,8 @@ def _listening(monkeypatch) -> SimpleNamespace:
         _minted_pgwire_server=SimpleNamespace(ssl_ctx=None),
         meta_qualifiers={},
         org_id="org1",
+        # REQ-1159 (amended 2026-11-28): a table argument names its table as SQL serves it.
+        names_table=served_names("sales.orders"),
     )
 
 
@@ -240,7 +243,7 @@ async def test_a_call_gives_the_function_the_table_reference_and_its_declared_co
     rows = [{"region": "emea", "score": 0.5}]
     worker, fn = _registered(monkeypatch, "query", rows)
     answered = await dispatch_function(
-        fn, {"a0": "main.public.orders"}, _listening(monkeypatch), "analyst"
+        fn, {"a0": "sales.orders"}, _listening(monkeypatch), "analyst"
     )
     assert answered == rows
     from provisa.codesource.worker import ABSENT
@@ -251,9 +254,9 @@ async def test_a_call_gives_the_function_the_table_reference_and_its_declared_co
     given = {k: v for k, v in args[0].items() if k != "connection"}
     assert given == {
         "kind": "table_ref",
-        "ref": "main.public.orders",
+        "ref": "sales.orders",
         "columns": ["id", "region"],
-        "sql": 'SELECT "orders"."id", "orders"."region" FROM main.public.orders',
+        "sql": 'SELECT "orders"."id", "orders"."region" FROM sales.orders',
     }
     assert schema is not None
 
@@ -264,9 +267,7 @@ async def test_rows_off_the_declared_output_contract_fail_loud(monkeypatch):
 
     _, fn = _registered(monkeypatch, "query", [{"region": "emea"}])
     with pytest.raises(HTTPException):
-        await dispatch_function(
-            fn, {"a0": "main.public.orders"}, _listening(monkeypatch), "analyst"
-        )
+        await dispatch_function(fn, {"a0": "sales.orders"}, _listening(monkeypatch), "analyst")
 
 
 # -- composition and lineage --------------------------------------------------------------------
@@ -277,7 +278,7 @@ def _function(kind: str) -> dict:
 
 
 def test_a_view_may_call_a_query_and_may_not_call_a_mutation():
-    sql = "SELECT * FROM score('main.public.orders') AS s"
+    sql = "SELECT * FROM score('sales.orders') AS s"
     refuse_writes_in_definition(sql, {"score": _function("query")}, "view v")
     with pytest.raises(ValueError, match="score"):
         refuse_writes_in_definition(sql, {"score": _function("mutation")}, "view v")
@@ -294,10 +295,10 @@ def test_a_views_lineage_runs_from_the_input_table_through_the_command_to_its_ou
         "output_columns": outputs,
     }
     graph = build_column_graph(
-        "SELECT s.score FROM score('main.public.orders') AS s", commands={"score": command}
+        "SELECT s.score FROM score('sales.orders') AS s", commands={"score": command}
     )
     sources = {n.id for n in graph.nodes.values() if n.kind == "source"}
-    assert sources == {"main.public.orders.id", "main.public.orders.region"}
+    assert sources == {"sales.orders.id", "sales.orders.region"}
     into_score = [e for e in graph.edges if e.target == "s.score"]
     assert {e.source for e in into_score} >= sources
     assert all(e.ops[0].name == "score" for e in into_score if e.source in sources)

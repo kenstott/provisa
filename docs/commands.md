@@ -34,10 +34,17 @@ Each argument declares an `arg_kind`:
 | `arg_kind` | Behavior |
 | --- | --- |
 | `column_value` | Scalar; passed directly in the request payload |
-| `table_ref` | Lazy; Provisa passes the relation reference as-is; the service fetches the data |
-| `result_set` | Eager; Provisa materializes the referenced relation and sends its rows |
+| `table_ref` | Lazy; Provisa passes the table's name; the service fetches the data |
+| `result_set` | Eager; Provisa reads the relation and sends its rows |
 
 `http` and `grpc` commands **must** declare at least one `table_ref` or `result_set` argument.
+
+A relation argument given as a table names it by its logical name, the `schema.table` a SQL
+statement reads it by (for example `pet_store.orders`). A `result_set` table is read through the
+governed pipeline as the calling role, so that role's row filters, masks and column visibility
+apply, and only the argument's declared columns are read. A physical `source.schema.table`
+reference, or any name SQL serves no table by, is refused with HTTP 400 naming the form it takes.
+A `result_set` may also be given as a query, which runs the same way, or as a JSON array of rows.
 
 A code source's `@command` or `@query` reads a `table_ref` itself. The reference it is given holds
 the table's name, its declared columns, `connection` (a PostgreSQL connection: `host`, `port`,
@@ -78,8 +85,9 @@ Both contracts are validated fail-loud at every invocation:
 
 - **Output:** rows returned by the command are validated against `output_columns` before they
   reach the caller.
-- **Narrow projection:** when an input contract is declared, the materialization query projects
-  **only those columns** (`SELECT "id", "region" FROM ...`) rather than `SELECT *`.
+- **Narrow projection:** when an input contract is declared, the read of a table projects
+  **only those columns** (`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`)
+  rather than `SELECT *`.
 
 ### The IR type vocabulary
 
@@ -169,8 +177,8 @@ Commands can appear **inside** a larger SQL statement, where you join, subquery 
 ```sql
 -- Enrich the orders relation and join the result back inline.
 SELECT o.id, o.amount, e.score, e.region_label
-FROM   orders o
-JOIN   enrich_orders('main.public.orders') e ON o.id = e.id
+FROM   pet_store.orders o
+JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
 WHERE  e.score > 0.8;
 ```
 

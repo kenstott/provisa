@@ -77,7 +77,7 @@ def test_standalone_command_returns_enriched_set(server):
     # The standalone short-circuit returns the command's full set (outer LIMIT is not pushed into it),
     # so assert the first rows in id order.
     rows = _query(
-        server, "SELECT id, score, region_label FROM enrich_orders('sales-pg.public.orders')"
+        server, "SELECT id, score, region_label FROM enrich_orders('sales_analytics.orders')"
     )
     by_id = {r[0]: r for r in rows}
     for oid in (1, 2, 3):
@@ -89,7 +89,7 @@ def test_composed_command_joined_inline(server):
     rows = _query(
         server,
         "SELECT o.id, e.score, e.region_label "
-        "FROM sa__orders o JOIN enrich_orders('sales-pg.public.orders') e ON o.id = e.id "
+        "FROM sa__orders o JOIN enrich_orders('sales_analytics.orders') e ON o.id = e.id "
         "ORDER BY o.id LIMIT 3",
     )
     # pgwire returns text-format cells; coerce and compare the values (correctness, not wire type)
