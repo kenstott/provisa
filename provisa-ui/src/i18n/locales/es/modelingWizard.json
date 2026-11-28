@@ -4,6 +4,8 @@
     "next": "Siguiente",
     "toReview": "Revisar",
     "back": "Atrás",
+    "skipStep": "Omitir paso",
+    "close": "Cerrar",
     "remove": "Quitar",
     "domainHelp": "El dominio en el que se registra cada tabla que crea este asistente: su espacio de nombres para el control de acceso y las consultas.",
     "validTime": "Tiempo de validez",

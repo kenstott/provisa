@@ -103,7 +103,7 @@ def _run_job(tmp: Path, job: Path, **env: str) -> tuple[list[str], Path]:
 
 def test_without_base_the_plan_is_unchanged(tmp_path: Path) -> None:
     job = _send(tmp_path, "--rounds", "2")
-    assert job.read_text().splitlines()[:2] == ["ROUNDS=2", "BASE_REF=''"]
+    assert job.read_text().splitlines()[:3] == ["ROUNDS=2", "BASE_REF=''", "STAGE_SPANS=''"]
     plan, _ = _run_job(tmp_path, job)
     assert plan == [
         "setup setup",
@@ -116,8 +116,8 @@ def test_without_base_the_plan_is_unchanged(tmp_path: Path) -> None:
 def test_base_rounds_alternate_with_candidate_rounds_then_compare(tmp_path: Path) -> None:
     job = _send(tmp_path, "--base", "v0.1.0-alpha.512", "--rounds", "2")
     lines = job.read_text().splitlines()
-    assert lines[:2] == ["ROUNDS=2", "BASE_REF=v0.1.0-alpha.512"]
-    assert "\n".join(lines[2:]) + "\n" == (_BENCH / "mini-job.sh").read_text()
+    assert lines[:3] == ["ROUNDS=2", "BASE_REF=v0.1.0-alpha.512", "STAGE_SPANS=''"]
+    assert "\n".join(lines[3:]) + "\n" == (_BENCH / "mini-job.sh").read_text()
     home = tmp_path / "home"
     for r, (base_ms, cand_ms) in enumerate([(10.0, 11.0), (10.0, 25.0)], start=1):
         for engine in ("duckdb", "pg", "trino"):
@@ -140,6 +140,11 @@ def test_base_rounds_alternate_with_candidate_rounds_then_compare(tmp_path: Path
         assert first["comparison"] == second["comparison"] == "same VM"
         assert [f["kind"] for f in first["flags"]] == []
         assert [(f["kind"], f["ratio"]) for f in second["flags"]] == [("over_2x", 2.5)]
+
+
+def test_stage_spans_reaches_the_job_header(tmp_path: Path) -> None:
+    job = _send(tmp_path, "--rounds", "1", "--stage-spans")
+    assert job.read_text().splitlines()[:3] == ["ROUNDS=1", "BASE_REF=''", "STAGE_SPANS=1"]
 
 
 def test_compare_fails_when_a_round_wrote_no_report(tmp_path: Path) -> None:

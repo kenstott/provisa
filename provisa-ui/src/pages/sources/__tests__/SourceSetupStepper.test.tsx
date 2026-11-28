@@ -512,19 +512,87 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     });
   });
 
-  it("Review samples: Done with relationships already found ends the flow", async () => {
+  // REQ-2234: Discover relationships is passed only with nothing to relate or without the right;
+  // relationships that already touch the source's tables do not decide it (the review runs against
+  // every table in the model and can find more).
+  it.each([
+    ["Done", "source-setup-done", "done"],
+    ["Skip step", "source-setup-skip", "skipped"],
+  ])(
+    "Review samples: %s with relationships already present goes on to Discover relationships",
+    async (_label, testId, query) => {
+      tables = [table(11, "pg", "orders"), table(12, "pg", "lines"), table(5, "other", "people")];
+      relationships = [relationship(5, 11), relationship(11, 12)];
+      const { onClose } = renderStepper({ open: true });
+      expect(active()).toBe("2");
+      await press(testId);
+      expect(lastWrite().outcomes).toEqual({
+        tables: "registered",
+        relationships: null,
+        query,
+      });
+      expect(onClose).not.toHaveBeenCalled();
+      expect(active()).toBe("3");
+      expect(screen.queryByTestId("source-setup-complete")).toBeNull();
+      // The strip shows Discover relationships as current, not done.
+      const relate = screen.getByTestId("source-setup-step-relate");
+      expect(relate).toHaveAttribute("data-progress");
+      expect(relate).not.toHaveAttribute("data-completed");
+      expect(headActions()).toEqual([
+        "source-setup-relate",
+        "source-setup-skip",
+        "source-setup-finish-later",
+      ]);
+    },
+  );
+
+  it("existing relationships do not pass Discover relationships on the read view", () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     relationships = [relationship(5, 11)];
-    const { onClose } = renderStepper({ open: true });
-    expect(active()).toBe("2");
-    await press("source-setup-done");
-    expect(lastWrite().outcomes).toEqual({
-      tables: "registered",
-      relationships: "found",
-      query: "done",
-    });
-    expect(onClose).toHaveBeenCalled();
+    held = { ...NONE, query: "done" };
+    renderStepper();
+    expect(active()).toBe("3");
+    expect(screen.queryByTestId("source-setup-complete")).toBeNull();
   });
+
+  it.each([
+    ["Done", "source-setup-done", "done"],
+    ["Skip step", "source-setup-skip", "skipped"],
+  ])(
+    "Review samples: %s with relationships present but fewer than two tables ends the flow",
+    async (_label, testId, query) => {
+      tables = [table(11, "pg", "orders")];
+      relationships = [relationship(11, 11)];
+      const { onClose } = renderStepper({ open: true });
+      await press(testId);
+      expect(lastWrite().outcomes).toEqual({
+        tables: "registered",
+        relationships: "none_found",
+        query,
+      });
+      expect(onClose).toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["Done", "source-setup-done", "done"],
+    ["Skip step", "source-setup-skip", "skipped"],
+  ])(
+    "Review samples: %s with relationships present, without create_relationship, ends the flow",
+    async (_label, testId, query) => {
+      auth.capabilities = ["table_registration"];
+      tables = [table(11, "pg", "orders"), table(5, "other", "people")];
+      relationships = [relationship(5, 11)];
+      const { onClose } = renderStepper({ open: true });
+      await press(testId);
+      expect(lastWrite().outcomes).toEqual({
+        tables: "registered",
+        relationships: "skipped",
+        query,
+      });
+      expect(onClose).toHaveBeenCalled();
+    },
+  );
 
   it("Review samples: Done with relationships to discover goes on to Discover relationships", async () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];

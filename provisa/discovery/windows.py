@@ -30,10 +30,14 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 
 from provisa.discovery import context
 from provisa.discovery.columns import ColumnFacts, TableFacts, compared
 from provisa.llm.limits import CHARS_PER_TOKEN
+
+if TYPE_CHECKING:
+    from provisa.profiler.classify import Kind
 
 #: REQ-413: a call lists at most as many table pairs as the output limit answers at this many
 #: tokens per pair.
@@ -264,9 +268,11 @@ def plan(
     return Plan(k, room, names, batch(pairs, names, room, k), len(pairs))
 
 
-def _widest(tables: Sequence[TableFacts], samples_per_column: int) -> list[TableFacts]:
+def _widest(
+    tables: Sequence[TableFacts], samples_per_column: int, kinds: Sequence["Kind"]
+) -> list[TableFacts]:
     return [
-        replace(t, columns=tuple(context.widest(c, samples_per_column) for c in t.columns))
+        replace(t, columns=tuple(context.widest(c, samples_per_column, kinds) for c in t.columns))
         for t in tables
     ]
 
@@ -277,10 +283,11 @@ def bound(
     input_tokens: int,
     output_tokens: int,
     samples_per_column: int,
+    kinds: Sequence["Kind"],
 ) -> tuple[int, int, int]:
     """``(k, calls, table pairs)``: the pairs each call lists at most, and upper bounds on the
     calls and the table pairs :func:`plan` gives for these tables whatever their values and
-    classes turn out to be, from their registration alone (REQ-413: the count before Run reads
+    classes turn out to be (among the org's ``kinds``), from their registration alone (REQ-413: the count before Run reads
     no table), each column sending at most ``samples_per_column`` (the run's) sample values.
 
     The tables are registered ones: every column of a read table has the class unknown and meets
@@ -294,7 +301,7 @@ def bound(
     every = [*source, *(target or [])]
     names = labels(every)
     room = _room(input_tokens, k, either_direction=either, not_read=any(t.reduced for t in every))
-    heaviest = {t.table_id: t for t in _widest(every, samples_per_column)}
+    heaviest = {t.table_id: t for t in _widest(every, samples_per_column, kinds)}
     pairs = [
         replace(p, source=heaviest[p.source.table_id], target=heaviest[p.target.table_id])
         for p in table_pairs(source, target)

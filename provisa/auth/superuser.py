@@ -13,8 +13,13 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import hmac
+import secrets
+import sys
+from typing import TYPE_CHECKING, Any, TextIO
 
+import bcrypt
 import jwt
 
 from provisa.api.errors import ApiError
@@ -22,7 +27,10 @@ from provisa.auth.models import AuthIdentity
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 from provisa.core.secrets import resolve_secrets
 
-# Requirements: REQ-125, REQ-1472
+if TYPE_CHECKING:
+    from provisa.core.database import Database
+
+# Requirements: REQ-125, REQ-1472, REQ-1264, REQ-2290
 
 # Same lifetime as the basic provider's browser session (providers/basic.py): the token is a
 # bearer credential the SPA keeps in localStorage.
@@ -151,3 +159,188 @@ def validate_superuser_session(  # REQ-1472
         roles=[PLATFORM_ADMIN_ROLE, ORG_ADMIN_ROLE],
         raw_claims={"superuser": True},
     )
+
+
+# --- REQ-1264 / REQ-2290: the seeded break-glass platform admin ----------------------------------
+#
+# One account per deployment, named BREAKGLASS_USERNAME. The platform creates it at its first
+# start with a random password, prints that password once to the console, and keeps only its
+# bcrypt hash: in the platform control plane's ``deployment_settings`` row BREAKGLASS_STATE, never
+# in a config file or the environment. Checking it reads that row from the process's snapshot and
+# runs bcrypt locally, so it signs in with the IdP unreachable. The first sign-in with the
+# generated password is refused until the password is changed. The account holds platform_admin
+# and nothing else: no org role, no data (REQ-1264 amended 2026-11-27, REQ-1327).
+
+BREAKGLASS_USERNAME = "platform-admin"
+#: The ``deployment_settings`` row holding ``{"hash": <bcrypt>, "rotate": <bool>}``.
+BREAKGLASS_STATE = "auth.breakglass"
+#: The refusal code of a sign-in whose password must be changed first.
+PASSWORD_CHANGE_REQUIRED = "auth.password_change_required"
+#: The shortest password the account may be changed to. The generated one is 32 characters.
+MIN_PASSWORD_LENGTH = 12
+_GENERATED_BYTES = 24  # token_urlsafe(24) is 32 characters, 192 bits
+_BREAKGLASS_CLAIM = "provisa.breakglass"
+
+
+class PasswordChangeRequired(Exception):
+    """The break-glass password is the generated one: it must be changed before it signs in."""
+
+
+def breakglass_state() -> dict[str, Any] | None:
+    """The account's stored hash and rotation flag, or ``None`` when no control plane is bound
+    (a process that never started a platform has no break-glass account)."""
+    from provisa.core import deployment_settings
+
+    return deployment_settings.get(BREAKGLASS_STATE)
+
+
+def _hash(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
+
+
+def ensure_breakglass(db: "Database") -> str | None:
+    """Create the break-glass account when the platform has none.
+
+    Returns the generated password when THIS call created the account, for the caller to show
+    once; ``None`` when it already existed (created by an earlier start, or by a worker of the
+    same launch that stored it first). Only the bcrypt hash is stored.
+    """
+    from provisa.core import deployment_settings
+
+    if deployment_settings.get(BREAKGLASS_STATE) is not None:
+        return None
+    password = secrets.token_urlsafe(_GENERATED_BYTES)
+    record = {"hash": _hash(password), "rotate": True}
+    if not deployment_settings.create(db, BREAKGLASS_STATE, record, updated_by="platform"):
+        return None  # another process of this launch created it; its password is the one shown
+    return password
+
+
+def announce_breakglass(password: str, stream: TextIO | None = None) -> None:
+    """Show the generated password once, on the console (stdout: the container log, the
+    cloud-init console). Deliberately not the logger: log handlers write files and export to
+    the telemetry backend, which would keep the password."""
+    out = stream if stream is not None else sys.stdout
+    out.write(
+        "\n"
+        "==================== PROVISA BREAK-GLASS ACCOUNT ====================\n"
+        f"  username: {BREAKGLASS_USERNAME}\n"
+        f"  password: {password}\n"
+        "  Shown once. The first sign-in requires a new password.\n"
+        "=====================================================================\n"
+    )
+    out.flush()
+
+
+def _verified(username: str, password: str, state: dict[str, Any] | None) -> bool:
+    if state is None:
+        return False
+    if not hmac.compare_digest(username.encode("utf-8"), BREAKGLASS_USERNAME.encode("utf-8")):
+        return False
+    return bcrypt.checkpw(password.encode("utf-8"), state["hash"].encode("ascii"))
+
+
+def _breakglass_identity() -> AuthIdentity:
+    return AuthIdentity(
+        user_id=BREAKGLASS_USERNAME,
+        email=None,
+        display_name="Platform admin (break-glass)",
+        roles=[PLATFORM_ADMIN_ROLE],  # REQ-1264: platform_admin only, never org_admin
+        raw_claims={"superuser": True, "breakglass": True},
+    )
+
+
+def check_breakglass(
+    username: str, password: str, state: dict[str, Any] | None
+) -> AuthIdentity | None:
+    """The break-glass identity when the credentials match, else ``None``.
+
+    Raises :class:`PasswordChangeRequired` when they match the generated password not yet changed.
+    """
+    if not _verified(username, password, state):
+        return None
+    assert state is not None  # _verified is False without one
+    if state["rotate"]:
+        raise PasswordChangeRequired(BREAKGLASS_USERNAME)
+    return _breakglass_identity()
+
+
+def _hash_tag(state: dict[str, Any]) -> str:
+    """Binds a session to the password it was issued under: changing the password ends it."""
+    return hashlib.sha256(state["hash"].encode("ascii")).hexdigest()[:16]
+
+
+def issue_breakglass_session(
+    username: str, password: str, state: dict[str, Any] | None, secret: str | None
+) -> str:
+    """Exchange the break-glass credentials for a browser session JWT.
+
+    Raises ``ValueError`` on a mismatch, :class:`PasswordChangeRequired` before the first change,
+    and 503 when no signing key is configured.
+    """
+    if not secret:
+        raise ApiError(
+            503,
+            "auth.session_secret_missing",
+            "auth.jwt_secret is required to issue a break-glass browser session",
+        )
+    if check_breakglass(username, password, state) is None:
+        raise ValueError("Invalid credentials")
+    assert state is not None
+    now = datetime.datetime.now(datetime.timezone.utc)
+    return jwt.encode(
+        {
+            "sub": BREAKGLASS_USERNAME,
+            "typ": _BREAKGLASS_CLAIM,
+            "pwd": _hash_tag(state),
+            "iat": now,
+            "exp": now + _SESSION_TTL,
+        },
+        secret,
+        algorithm="HS256",
+    )
+
+
+def validate_breakglass_session(
+    token: str, state: dict[str, Any] | None, secret: str | None
+) -> AuthIdentity | None:
+    """The identity behind a break-glass session JWT, or ``None`` when the token is not one
+    (another issuer's token, an expired one, or one issued under a password since changed)."""
+    if not secret or state is None or state["rotate"]:
+        return None
+    try:
+        decoded = jwt.decode(token, secret, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
+    if decoded.get("typ") != _BREAKGLASS_CLAIM or decoded.get("sub") != BREAKGLASS_USERNAME:
+        return None
+    if not hmac.compare_digest(str(decoded.get("pwd", "")), _hash_tag(state)):
+        return None
+    return _breakglass_identity()
+
+
+def change_breakglass_password(
+    db: "Database", username: str, current: str, new: str, state: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Replace the break-glass password; clears the first-sign-in rotation. Returns the new state.
+
+    Raises ``ValueError`` when ``username``/``current`` do not match (the caller maps it to the same
+    401 as any bad password) and 400 when the new password is refused.
+    """
+    from provisa.core import deployment_settings
+
+    if not _verified(username, current, state):
+        raise ValueError("Invalid credentials")
+    if len(new) < MIN_PASSWORD_LENGTH:
+        raise ApiError(
+            400,
+            "auth.password_too_short",
+            f"The new password must be at least {MIN_PASSWORD_LENGTH} characters",
+        )
+    if hmac.compare_digest(new.encode("utf-8"), current.encode("utf-8")):
+        raise ApiError(
+            400, "auth.password_unchanged", "The new password must differ from the current one"
+        )
+    record = {"hash": _hash(new), "rotate": False}
+    deployment_settings.write(db, {BREAKGLASS_STATE: record}, updated_by=BREAKGLASS_USERNAME)
+    return record

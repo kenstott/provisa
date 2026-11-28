@@ -646,7 +646,7 @@ so `ops.mv_refresh_lineage` in a sandbox lists the refreshes its history came fr
 
 The Demo bundles workflow (`.github/workflows/demo-bundles.yml`) builds a demo on a push to
 `main` that touches `demo/named/<name>/`, or on a dispatch naming it. It publishes the bundle
-to `ghcr.io/kenstott/provisa-demos`, one repository for every demo, under two tags: `<name>-<version>`
+to `ghcr.io/simpleishard-llc/provisa-demos`, one repository for every demo, under two tags: `<name>-<version>`
 and `<name>-latest`. The version is the build's UTC minute and commit, for example
 `202610141530-1a2b3c4d5`. A version is never published twice.
 
@@ -668,7 +668,7 @@ python -m provisa.core.demo_bundles pull weblogs --into ~/.provisa/demos
 
 The launcher pulls the bundle into `$PROVISA_HOME/demos/<name>/<version>` (`~/.provisa` by
 default). A version already there is not fetched again. `PROVISA_DEMO_REGISTRY` names another
-registry; bundles come from `ghcr.io/kenstott` otherwise.
+registry; bundles come from `ghcr.io/simpleishard-llc` otherwise.
 
 `--from-source` runs `demo/named/<name>/` through the full build-everything path. Combining
 `--from-source` with `@<version>` is refused. Use it while authoring.

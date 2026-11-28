@@ -72,6 +72,9 @@
     "argDefault": "Valor padrão do argumento {{name}}",
     "argDefaultPlaceholder": "Valor padrão (deixe vazio se obrigatório)",
     "nativeSql": "SQL nativo",
-    "nativeSqlHint": "SQL no dialeto próprio da fonte, uma instrução ou várias, executadas na fonte numa única transação: todas são confirmadas ou nenhuma é. Escreva um argumento como {{placeholder}}; cada um é vinculado como valor. A resposta são as linhas da última instrução."
+    "nativeSqlHint": "SQL no dialeto próprio da fonte, uma instrução ou várias, executadas na fonte numa única transação: todas são confirmadas ou nenhuma é. Escreva um argumento como {{placeholder}}; cada um é vinculado como valor. A resposta são as linhas da última instrução.",
+    "enteredCodeHint": "Python guardado com o modelo e executado em sandbox. Marque a função que o comando chama com @query (lê) ou @command (escreve); declare os tipos dos parâmetros e do resultado.",
+    "enteredFunctionHint": "A função do código que este comando chama.",
+    "enteredDeclarationHint": "Lido da declaração da função sempre que o comando é salvo."
   }
 }

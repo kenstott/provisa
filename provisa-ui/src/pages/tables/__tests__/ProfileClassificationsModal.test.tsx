@@ -22,6 +22,7 @@ const api = vi.hoisted(() => ({
   fetchProfileRun: vi.fn(),
   decideClassification: vi.fn(),
   forgetClassification: vi.fn(),
+  fetchClassificationKinds: vi.fn(),
 }));
 vi.mock("../../../api/profiler", () => api);
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "steward" }) }));
@@ -55,9 +56,35 @@ beforeEach(() => {
   api.fetchProfileRuns.mockResolvedValue([{ run_id: "r1", status: "succeeded" }]);
   api.fetchProfileRun.mockResolvedValue({ runs: [], classifications: [SSN, CITY] });
   api.fetchClassifications.mockResolvedValue({ decisions: [] });
+  api.fetchClassificationKinds.mockResolvedValue({
+    kinds: [{ id: "custom.employee_id", label: "Employee ID", custom: true }],
+    checks: [],
+    masks: [],
+  });
 });
 
 describe("ProfileClassificationsModal", () => {
+  it("names a custom kind by the org's label, and drops one the org has deleted", async () => {
+    // REQ-2147 (amended 2026-11-25): a custom kind is suggested exactly as a shipped one.
+    const badge = {
+      ...SSN,
+      column_name: "badge",
+      physical_column: "badge",
+      kind: "custom.employee_id",
+      sensitive: false,
+    };
+    const gone = { ...badge, column_name: "old", physical_column: "old", kind: "custom.gone" };
+    api.fetchProfileRun.mockResolvedValue({ runs: [], classifications: [badge, gone] });
+    render(<ProfileClassificationsModal tableId={7} tableName="customers" onClose={vi.fn()} />);
+    expect(
+      await screen.findByText(
+        "customers.badge looks like Employee ID: 97% of sampled values pass its test.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Employee ID")).toBeInTheDocument();
+    expect(screen.queryByText("old")).toBeNull();
+  });
+
   it("says what each suggestion found, in words", async () => {
     render(<ProfileClassificationsModal tableId={7} tableName="customers" onClose={vi.fn()} />);
     expect(

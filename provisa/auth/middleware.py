@@ -27,7 +27,16 @@ from starlette.responses import JSONResponse
 from provisa.audit.context import audit_identity_scope
 from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment, verified_email
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
-from provisa.auth.superuser import check_superuser, validate_superuser_session
+from provisa.auth.superuser import (
+    BREAKGLASS_USERNAME,
+    PASSWORD_CHANGE_REQUIRED,
+    PasswordChangeRequired,
+    breakglass_state,
+    check_breakglass,
+    check_superuser,
+    validate_breakglass_session,
+    validate_superuser_session,
+)
 from provisa.auth.throttle import LockedOut, throttled
 from provisa.core.schema_admin import (
     superadmin_bootstrap,
@@ -157,6 +166,9 @@ _SKIP_PATHS = {
     # for every provider, which is what gives the operator account a browser sign-in on a
     # deployment fronted by an IdP.
     "/auth/superuser-login",
+    # REQ-2290: the break-glass password change. It carries the current password in its body and
+    # is the one call a not-yet-rotated account may make, so it too sits before the bearer gate.
+    "/auth/superuser-password",
     # REQ-1265: the SAML sign-in round trip. Like /auth/login these PRODUCE the session token:
     # the browser is sent to the IdP, the IdP posts back, and the SP's own metadata is fetched
     # by the IdP's operator. None of them can carry a bearer.
@@ -958,9 +970,13 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # The superuser presents HTTP Basic credentials; on match, short-circuit to an
         # admin identity (admin role grants all capabilities downstream). Checked before
         # provider validation so it functions even when an IdP (bearer) is configured.
-        if self._superuser:
+        # REQ-1264: the seeded break-glass account (platform_admin only) is checked here too, from
+        # the control plane's stored hash: local, so it signs in with the IdP unreachable.
+        breakglass = breakglass_state()
+        if self._superuser or breakglass is not None:
             auth_header = request.headers.get("authorization")
             su_identity = None
+            is_breakglass = False
             if auth_header and auth_header.startswith("Basic "):
                 try:
                     decoded = base64.b64decode(auth_header[len("Basic ") :]).decode("utf-8")
@@ -971,19 +987,43 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                         status_code=401,
                         content={"detail": "Malformed Basic Authorization header"},
                     )
-                su_identity = check_superuser(su_username, su_password, self._superuser)
+                if breakglass is not None and su_username == BREAKGLASS_USERNAME:
+                    try:
+                        su_identity = check_breakglass(su_username, su_password, breakglass)
+                    except PasswordChangeRequired:
+                        return _deny(
+                            request,
+                            403,
+                            "The break-glass password must be changed before it signs in",
+                            cause="breakglass rotation pending",
+                            code=PASSWORD_CHANGE_REQUIRED,
+                        )
+                    is_breakglass = su_identity is not None
+                elif self._superuser:
+                    su_identity = check_superuser(su_username, su_password, self._superuser)
             elif auth_header and auth_header.startswith("Bearer "):
                 # REQ-1472: the browser's presentation of the same account. Every provider that
                 # takes a bearer credential shares this scheme, so a token that is not one of ours
                 # returns None and falls through to the provider below — the IdP, not this branch,
                 # decides its own tokens.
-                su_identity = validate_superuser_session(
-                    auth_header[len("Bearer ") :],
-                    self._superuser,
-                    self._superuser_session_secret,
+                bearer = auth_header[len("Bearer ") :]
+                su_identity = validate_breakglass_session(
+                    bearer, breakglass, self._superuser_session_secret
                 )
-            if su_identity is not None:
-                # REQ-125/REQ-1327: the break-glass account holds BOTH planes. platform_admin
+                is_breakglass = su_identity is not None
+                if su_identity is None and self._superuser:
+                    su_identity = validate_superuser_session(
+                        bearer,
+                        self._superuser,
+                        self._superuser_session_secret,
+                    )
+            if su_identity is not None and is_breakglass:
+                # REQ-1264 (amended 2026-11-27): platform_admin only. Held alone it stays the
+                # acting role, and the data surfaces refuse it (REQ-1327): it reads no data.
+                su_assignments = [RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*")]
+                su_role = PLATFORM_ADMIN_ROLE
+            else:
+                # REQ-125/REQ-1327: the configured superuser holds BOTH planes. platform_admin
                 # is the control plane and generates no data schema, so on its own the
                 # superuser could reach every admin surface and no table — an operator locked
                 # out of the data plane of the deployment they administer. org_admin rides
@@ -994,6 +1034,8 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*"),
                     RoleAssignment(role_id=ORG_ADMIN_ROLE, domain_id="*"),
                 ]
+                su_role = ORG_ADMIN_ROLE
+            if su_identity is not None:
                 su_identity.roles = _assignments_to_claims(su_assignments)
                 # platform_admin is the special case: break-glass acts as both of its roles, on
                 # both planes, whatever a request names.
@@ -1009,7 +1051,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 request.state.can_cross_org = True
                 # X-Provisa-Role is not consulted: the break-glass account holds exactly one
                 # role per plane, and the acting role is the data-plane one either way.
-                request.state.role = ORG_ADMIN_ROLE
+                request.state.role = su_role
                 request.state.assignments = su_assignments
                 # REQ-1276: the Host subdomain is the SOLE org source, and it binds the
                 # break-glass account like everyone else. Pinning the default org here answered a
@@ -1031,6 +1073,11 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                         "Org selection required: name the org with its subdomain (<org>.<domain>)",
                         cause="no_org_named",
                         code=ORG_SELECTION_REQUIRED,
+                    )
+                if is_breakglass:
+                    # REQ-1264/REQ-1327: platform_admin confers no rights inside a tenant org.
+                    return _deny(
+                        request, 403, f"platform_admin confers no rights in org {su_org!r}"
                     )
                 if self._admin_pool is None:
                     return _deny(

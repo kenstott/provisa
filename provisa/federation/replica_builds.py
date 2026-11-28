@@ -324,6 +324,11 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
         # take this same lock, keyed on the replica's address.
         async with land_lock(f"{address.schema}.{address.table}"):
             outcome = await job.run(progress)
+        if outcome.changed:
+            # A new table was swapped in at the address: the row cache ensures it again.
+            from provisa.federation.store_writer import forget_ensured
+
+            forget_ensured(address.schema, address.table)
         if captured and stopped is not None:
             await landed_offsets.record(
                 captured[0], landed_offsets.landed_group(source.id), stopped, security=PLAINTEXT
@@ -748,6 +753,13 @@ async def build_group(
                 for name in sorted(f"{a.schema}.{a.table}" for _s, _t, _a, a in prepared.values()):
                     await held.enter_async_context(land_lock(name))
                 built = await job.run(table_progress)
+            from provisa.federation.store_writer import forget_ensured
+
+            for _s, built_table, _a, built_at in prepared.values():
+                swapped = built.get(built_table.table_name)
+                if isinstance(swapped, BuildOutcome) and swapped.changed:
+                    # A new table was swapped in at the address: the row cache ensures it again.
+                    forget_ensured(built_at.schema, built_at.table)
     except BaseException as failed:
         async with state.tenant_db.acquire() as conn:
             for node in nodes.values():

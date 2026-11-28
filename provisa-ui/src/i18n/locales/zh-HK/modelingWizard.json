@@ -4,6 +4,8 @@
     "next": "下一步",
     "toReview": "審閱",
     "back": "上一步",
+    "skipStep": "略過此步驟",
+    "close": "關閉",
     "remove": "移除",
     "domainHelp": "此精靈建立的每個資料表都會登記在這個網域之下:它是存取控制和查詢的命名空間。",
     "validTime": "有效時間",
