@@ -49391,7 +49391,7 @@
     emits null - which makes the emitted YAML an incomplete design the user must finish before it will
     load. An unassigned type fails loudly: view registration returns schema.column_types_unresolved naming
     the columns, and the table repository - the single write path for table_columns - raises rather than
-    persisting the null. There is therefore no unknown data type at run time.'
+    persisting the null. There is therefore no unknown data type at run time. (Amended 2026-11-28) Registration also refuses a column whose type is the type of NULL (null, unknown), as it refuses a missing type; such a column is never stored and so never reaches proto, GraphQL or any other generated contract.'
   use_case: An operator browsing the catalog needs every column to state its type, and the compiler needs
     a type for every column it plans against.
   code:
