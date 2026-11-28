@@ -75,7 +75,7 @@ def governed(monkeypatch):
 
     async def _govern(sql, role_id, **_kw):
         ran.append((sql, role_id))
-        return "plan"
+        return SimpleNamespace(limit_outcome=None, row_limit=None)  # whole: no row cap cut it
 
     async def _execute(plan, _state):
         return QueryResult(
