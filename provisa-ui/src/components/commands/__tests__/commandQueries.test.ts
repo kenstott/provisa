@@ -18,6 +18,7 @@ import type { ActionArg } from "../../../api/actions";
 import {
   commandQueryLink,
   commandSurfaces,
+  sqlTypedLiteral,
   type ArgValue,
   type CommandCall,
   type ServedCommand,
@@ -236,5 +237,54 @@ describe("a command that writes", () => {
         autoRun: false,
       },
     });
+  });
+});
+
+describe("SQL: each scalar argument a literal of its declared type", () => {
+  it.each([
+    ["double", "1", "1"],
+    ["double", 2.5, "2.5"],
+    ["Float", -0.5, "-0.5"],
+    ["integer", 42, "42"],
+    ["Int", 7, "7"],
+    ["bigint", "9223372036854775807", "9223372036854775807"],
+    ["numeric", "1.50", "1.50"],
+    ["double", Infinity, "'Infinity'"],
+    ["boolean", true, "true"],
+    ["Boolean", false, "false"],
+    ["text", "o'neil", "'o''neil'"],
+    ["String", "1", "'1'"],
+    ["date", "2024-01-02", "DATE '2024-01-02'"],
+    ["timestamp", "2024-01-02 03:04:05", "TIMESTAMP '2024-01-02 03:04:05'"],
+    ["timestamptz", "2024-01-02 03:04:05+00", "TIMESTAMPTZ '2024-01-02 03:04:05+00'"],
+    ["time", "03:04", "TIME '03:04'"],
+    ["uuid", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", "UUID 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'"],
+    ["double", null, "null"],
+  ])("%s %j is written %s", (type, value, written) => {
+    expect(sqlTypedLiteral(type, value)).toBe(written);
+  });
+
+  it("the maintainer's report: four doubles are written as numbers, not quoted text", () => {
+    const greet: CommandCall = {
+      name: "greet",
+      kind: "query",
+      arguments: ["lat1", "lon1", "lat2", "lon2"].map((name) => ({ name, type: "double" })),
+    };
+    const served: ServedCommand = {
+      command: "greet",
+      domain_id: "geo",
+      graphql_root: "Query",
+      graphql_field: "geo__greet",
+      names: { sql: "greet", cypher: "greet", rest: "greet" },
+    };
+    const given: Record<string, ArgValue> = {
+      lat1: { kind: "scalar", value: 1 },
+      lon1: { kind: "scalar", value: "2" },
+      lat2: { kind: "scalar", value: 3 },
+      lon2: { kind: "scalar", value: 4 },
+    };
+    expect(commandQueryLink("sql", greet, served, reader, given).state.sql).toBe(
+      "select * from greet(1, 2, 3, 4)",
+    );
   });
 });

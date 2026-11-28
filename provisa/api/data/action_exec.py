@@ -20,7 +20,9 @@ from __future__ import annotations
 import httpx
 
 from provisa.api.data.action_governance import ActionEnforcement, govern_action_rows
+from provisa.api.data.argument_literals import UnknownLiteral, read_literal
 from provisa.api.errors import ApiError
+from provisa.core.pg_error import PostgresError
 from provisa.core.secrets import resolve_secrets
 from provisa.executor.function_dispatch import dispatch_function
 from provisa.security import sandbox_egress  # REQ-2006
@@ -418,6 +420,9 @@ def _of_declared_types(name: str, declared: list[dict], bound: dict) -> dict:
     for arg in declared:
         value = bound[arg["name"]]
         ir = to_ir(str(arg.get("type") or ""))
+        if isinstance(value, UnknownLiteral):
+            bound[arg["name"]] = _read_quoted(name, declared, arg["name"], ir, value)
+            continue
         kinds = _ARGUMENT_KINDS.get(ir)
         if value is None or kinds is None:
             continue
@@ -431,6 +436,31 @@ def _of_declared_types(name: str, declared: list[dict], bound: dict) -> dict:
                 argument=arg["name"],
             )
     return bound
+
+
+class ArgumentInputRefused(ApiError):
+    """A quoted literal its parameter's type does not read: PostgreSQL's own error and SQLSTATE
+    (``sqlstate``, which pgwire reports it with), naming the argument and the signature."""
+
+    def __init__(self, signature: str, argument: str, refused: PostgresError) -> None:
+        super().__init__(
+            400,
+            "functions.argument_input",
+            str(refused),
+            signature=signature,
+            argument=argument,
+            sqlstate=refused.sqlstate,
+        )
+        self.sqlstate = refused.sqlstate
+
+
+def _read_quoted(name: str, declared: list[dict], argument: str, ir: str, value: UnknownLiteral):
+    """A quoted SQL literal read as its parameter's declared type, as PostgreSQL reads a literal of
+    type unknown (argument_literals); one that type does not read is refused with its error."""
+    try:
+        return read_literal(ir, value)
+    except PostgresError as refused:
+        raise ArgumentInputRefused(_signature(name, declared), argument, refused) from refused
 
 
 def _bind_implicit(name: str, declared: list[dict], params: dict) -> dict:

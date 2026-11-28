@@ -82,6 +82,14 @@ describe("the argument form", () => {
     expect(onOpen).toHaveBeenCalledWith({ factor: { kind: "scalar", value: 1.5 } });
   });
 
+  it("reads a scalar by its IR type: a double argument as a number", async () => {
+    const lat: ActionArg = { name: "lat1", type: "double" };
+    const onOpen = open({ name: "greet", kind: "query", arguments: [lat] });
+    await userEvent.type(screen.getByTestId("command-arg-lat1"), "1");
+    await press();
+    expect(onOpen).toHaveBeenCalledWith({ lat1: { kind: "scalar", value: 1 } });
+  });
+
   it("refuses a number argument that is not a number, by name", async () => {
     const onOpen = open({ name: "scale", kind: "query", arguments: [factor] });
     await userEvent.type(screen.getByTestId("command-arg-factor"), "lots");
