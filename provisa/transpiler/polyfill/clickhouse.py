@@ -1064,6 +1064,14 @@ def numeric_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return exp.Cast(this=exp.Literal.string(format(value, "f")), to=to)
 
 
+def numerics_read(node: exp.Expr) -> exp.Expr:
+    """``node`` with each numeric literal in it read as :func:`numeric_read` reads it. A rule of
+    no pattern writes its arguments as the statement says them (the walk does not descend into
+    what a rule writes): a literal past the old table's 38 digits stays a plain Decimal there,
+    which ClickHouse reads as Decimal(10, 0)."""
+    return node.transform(lambda n: numeric_read(n, "clickhouse") or n)
+
+
 NUMERIC = Feature(
     "numeric input",
     FAMILY,
@@ -1515,6 +1523,43 @@ NUMERIC_MOD = Feature(
     ),
 )
 
+#: scale(numeric): a Decimal's scale is its type's, which holds it (ClickHouse writes a Decimal's
+#: text without trailing zeros: scale('1.10'::numeric) read from the text answered 1); a value of
+#: any other type (an integer, a text) is read from its text, as the old table's form read it.
+_SCALE = (
+    "CASE WHEN $x IS NULL THEN CAST(NULL AS Nullable(Int32)) "
+    f"WHEN position(toTypeName($x), 'Decimal(') > 0 THEN CAST({_scale_of('$x')} AS Nullable(Int32)) "
+    "WHEN position(toString($x), '.') > 0 "
+    "THEN CAST(length(splitByChar('.', toString($x))[2]) AS Nullable(Int32)) "
+    "ELSE CAST(0 AS Nullable(Int32)) END"
+)
+
+SCALE = Feature(
+    "scale",
+    FAMILY,
+    "The digits after a numeric's point, trailing zeros among them.",
+    read=Side(
+        rules=(
+            Rule(
+                "scale($x)",
+                # Every other dialect keeps the old table's form, as numeric_mod's row does.
+                {**trino.trino_only(trino.KEPT), "clickhouse": _SCALE},
+                unlisted_keep=True,
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A numeric's scale is its Decimal type's, trailing zeros among its digits: a "
+                    "column holds one scale for all its values, where PostgreSQL's numeric holds "
+                    "each value's own. A literal of no precision said is read at its own scale "
+                    f"(up to {_MOST_DIGITS} digits after its point; past it 0A000)."
+                ),
+            )
+        },
+    ),
+)
+
 _SEARCH_PATH = (
     "Refused by name: ClickHouse's own currentSchemas answers its database, not PostgreSQL's "
     "search path."
@@ -1588,6 +1633,7 @@ FEATURES: tuple[Feature, ...] = (
     *WINDOW_FEATURES,
     NTILE,
     NUMERIC_MOD,
+    SCALE,
     CURRENT_SCHEMAS,
     SPG_POLY_QUAD_COMPRESS,
 )

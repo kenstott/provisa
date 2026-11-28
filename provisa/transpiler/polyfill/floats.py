@@ -38,7 +38,7 @@ import sqlglot.expressions as exp
 from provisa.pgwire import function_types
 from provisa.transpiler import pg_forms
 from provisa.transpiler.polyfill import notation, trino
-from provisa.transpiler.polyfill.clickhouse import _NUMERIC_MOD
+from provisa.transpiler.polyfill.clickhouse import _NUMERIC_MOD, numerics_read
 from provisa.transpiler.polyfill.matching import graft, match
 from provisa.transpiler.polyfill.notation import Form, Rewrite, replacement
 from provisa.transpiler.polyfill.grid import (
@@ -706,6 +706,7 @@ def _ch_mod(node: exp.Expr, dialect: str) -> exp.Expr | None:
         )
     elif "numeric" in said and all(t in _INTEGER_TYPES_SAID or t == "numeric" for t in said):
         form = _NUMERIC_MOD  # its throwIf is constant: a lambda folds it whichever branch is read
+        args = [numerics_read(a) for a in args]  # a literal at the Decimal256's bound, exactly
     else:
         return None
     return graft(replacement(form, dialect, "mod($a, $b)"), {"a": args[0], "b": args[1]})

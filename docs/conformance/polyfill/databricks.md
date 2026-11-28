@@ -8,11 +8,11 @@ This page lists every feature that has a polyfill or a limitation on Databricks.
 
 When Databricks is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 406, of which 257 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 407, of which 258 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 The rows below are made on the Conformance (functions) legs of Databricks: `databricks` on none (the warehouse lane&#x27;s Databricks SQL warehouse) (not judged by the last run). No run has verified them: run 45453337906, the last measured, judged none of its legs. Each row prints this provenance, read from scripts/conformance/function_legs.yaml and scripts/conformance/expected/functions.json, never written by hand.
 
-281 of the grid's 638 features are native on Databricks and left out.
+281 of the grid's 639 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: databricks. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -591,6 +591,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: databricks. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: databricks. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: databricks. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on databricks</li></ul></td><td></td><td></td></tr>
