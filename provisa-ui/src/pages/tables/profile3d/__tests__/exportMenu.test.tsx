@@ -14,7 +14,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../../../test-utils/render";
-import { exportImage, type ExportableScene } from "../exportImage";
+import { exportImage } from "../exportImage";
 
 const saved = vi.hoisted(() => ({ files: [] as string[], recordings: [] as AbortSignal[] }));
 vi.mock("../exportImage", async (actual) => {
@@ -39,7 +39,7 @@ vi.mock("../exportImage", async (actual) => {
   };
 });
 
-import { Stage3D } from "../Stage3D";
+import { Stage3D, type StageScene } from "../Stage3D";
 
 const scene = (canVector: boolean) =>
   ({
@@ -49,9 +49,10 @@ const scene = (canVector: boolean) =>
     vector: () => null,
     canVector,
     placedLabels: () => [],
-  }) as unknown as ExportableScene;
+    zoom: vi.fn(),
+  }) as unknown as StageScene;
 
-function stage(exportable: ExportableScene) {
+function stage(made: StageScene) {
   return render(
     <Stage3D
       wrapRef={{ current: null }}
@@ -62,7 +63,7 @@ function stage(exportable: ExportableScene) {
       canvasLabel="graph"
       tip={null}
       legend={null}
-      exportable={exportable}
+      scene={made}
       exportName="ontology"
       testId="x"
       controls={{ testId: "x", onReset: () => {}, rotate: { value: true, onChange: () => {} } }}

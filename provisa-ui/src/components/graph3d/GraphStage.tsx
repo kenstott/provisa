@@ -151,7 +151,7 @@ export function GraphStage({
       error={error}
       canvasLabel={t("graph3d.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
-      exportable={scene}
+      scene={scene}
       exportName={exportName}
       testId={testId}
       controls={controls}

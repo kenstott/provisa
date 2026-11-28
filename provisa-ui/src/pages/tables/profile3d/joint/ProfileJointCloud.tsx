@@ -144,7 +144,7 @@ function JointStage({
       error={error}
       canvasLabel={t("profileJoint.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
-      exportable={scene}
+      scene={scene}
       exportName={s.exportName}
       testId="joint-stage"
       controls={{

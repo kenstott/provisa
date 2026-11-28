@@ -168,7 +168,7 @@ function RelationsStage({
       error={error}
       canvasLabel={t("profileRelations.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
-      exportable={scene}
+      scene={scene}
       exportName={s.exportName}
       testId="relations-stage"
       controls={{
