@@ -17,7 +17,8 @@ diagrams (mermaid in Analyze) are not graph views.
 - `groups`: `{ id, label, description?, collapsed? }`.
 - `preset`: `"layered"` (ELK layered, groups packed), `"lanes"` (fixed lanes left to right,
   sorted and placed by the component, no layout library), `"flow"` (ELK layered left to right,
-  lineage's), or `"force"` (fCoSE).
+  lineage's and a role's inheritance graph's; its lines are bezier unless the view's `options`
+  route them `taxi`, as the role graph's are), or `"force"` (fCoSE).
 - `commands`: the view's own commands, at the end of the controls (lineage: expand all, collapse
   all, enlarge).
 

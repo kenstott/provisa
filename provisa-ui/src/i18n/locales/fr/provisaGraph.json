@@ -26,7 +26,8 @@
       "checker": "Contrôle de qualité",
       "profile": "Profil",
       "tag": "Étiquette",
-      "more": "Plus"
+      "more": "Plus",
+      "role": "Rôle"
     }
   }
 }

@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2161: a role's lineage as the lineage diagram draws it -- a box per role from the standard
-// roles to the selected one, each listing what it adds and the last the accumulated set, joined
-// parent to child.
+// REQ-2161: a role's lineage as the one graph component draws it -- a box per role from the
+// standard roles to the selected one, each listing what it adds and the last the accumulated set,
+// joined parent to child.
 
 import { describe, expect, it } from "vitest";
 import { roleLineageGraph } from "../roleLineage";
@@ -47,7 +47,14 @@ const kind = (k: "standard" | "custom" | "meta") => `kind:${k}`;
 
 describe("a role's lineage", () => {
   const g = roleLineageGraph(VIEW, kind);
-  const rows = (role: string) => g.nodes.filter((n) => n.relation === role).map((n) => n.column);
+  const rows = (role: string) =>
+    (g.nodes.find((n) => n.id === role)?.lines ?? []).map((l) => l.text);
+
+  it("draws each role as one box of the role type", () => {
+    expect(g.nodes.map((n) => [n.id, n.type, n.name])).toEqual(
+      VIEW.chain.map((r) => [r, "role", r]),
+    );
+  });
 
   it("lists what each role adds, and the selected role the accumulated set", () => {
     expect(rows("viewer")).toEqual(["kind:standard", "read"]);
@@ -62,7 +69,7 @@ describe("a role's lineage", () => {
   });
 
   it("joins each parent to its child, from the standard roles down", () => {
-    const pairs = g.edges.map((e) => [e.source.split("::")[0], e.target.split("::")[0]]);
+    const pairs = g.edges.map((e) => [e.source, e.target]);
     expect(pairs).toEqual(
       expect.arrayContaining([
         ["dq_steward", "dq_lead"],
@@ -72,7 +79,8 @@ describe("a role's lineage", () => {
       ]),
     );
     expect(pairs).toHaveLength(4);
-    expect(g.outputs).toEqual(g.nodes.filter((n) => n.relation === "dq_lead").map((n) => n.id));
+    // The line's direction is the inheritance: its arrow at the child.
+    expect(g.edges.every((e) => e.arrow === "target")).toBe(true);
   });
 
   it("names a meta-role's kind, its members its branches", () => {
@@ -86,7 +94,7 @@ describe("a role's lineage", () => {
       },
       kind,
     );
-    expect(meta.nodes.find((n) => n.relation === "meta:dp_owner+dq_steward")?.column).toBe(
+    expect(meta.nodes.find((n) => n.id === "meta:dp_owner+dq_steward")?.lines?.[0].text).toBe(
       "kind:meta",
     );
   });

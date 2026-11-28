@@ -52,17 +52,27 @@ vi.mock("../../../api/roleRights", () => ({
     return Promise.resolve(VIEW);
   },
 }));
-// The diagram is the lineage page's own component, held by its own tests.
-vi.mock("../../../components/lineage/LineageDag", () => ({
-  LineageDag: (props: { graph: { nodes: unknown[] }; readable?: boolean; minZoom?: number }) => {
+// The diagram is the one graph component, held by its own tests.
+vi.mock("../../../components/provisa-graph/ProvisaGraph", () => ({
+  ProvisaGraph: (props: {
+    graph: { nodes: { lines?: unknown[] }[]; edges: unknown[] };
+    preset: string;
+    options?: { routing: string; detail: string };
+    opensOn?: string | null;
+  }) => {
     // One diagram instance: a new one is laid out and fitted from scratch.
     const [instance] = useState(() => ++instances);
     return (
       <div
         data-testid="lineage-dag"
         data-nodes={props.graph.nodes.length}
+        data-lines={props.graph.nodes.reduce((n, x) => n + (x.lines?.length ?? 0), 0)}
+        data-edges={props.graph.edges.length}
+        data-preset={props.preset}
+        data-routing={props.options?.routing}
+        data-detail={props.options?.detail}
         data-instance={instance}
-        data-holds-a-zoom={String(Boolean(props.readable) || props.minZoom !== undefined)}
+        data-holds-a-zoom={String(props.opensOn != null)}
       />
     );
   },
@@ -97,7 +107,14 @@ describe("a role's Capabilities tab (REQ-2161)", () => {
     expect(row("data_product_rw")).toHaveTextContent("dq_steward");
     expect(row("export")).toHaveTextContent("its own");
     expect(row("export")).not.toHaveTextContent("standard role");
-    // The lineage: a box per role, a kind row each plus what each adds and the accumulated set.
-    expect(screen.getByTestId("lineage-dag")).toHaveAttribute("data-nodes", String(4 + 3 + 4));
+    // The lineage: a box per role, left to right, its lines orthogonal; each lists its kind and
+    // what it adds, the selected role the accumulated set.
+    const dag = screen.getByTestId("lineage-dag");
+    expect(dag).toHaveAttribute("data-nodes", "4");
+    expect(dag).toHaveAttribute("data-lines", String(4 + 3 + 4));
+    expect(dag).toHaveAttribute("data-edges", "4");
+    expect(dag).toHaveAttribute("data-preset", "flow");
+    expect(dag).toHaveAttribute("data-routing", "taxi");
+    expect(dag).toHaveAttribute("data-detail", "all");
   });
 });
