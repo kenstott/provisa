@@ -90,6 +90,7 @@ import { PageLoading } from "../components/PageLoading";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
+import { PageActions } from "../components/PageActions";
 
 /** A function's or a webhook's row, as the list's narrowings read it. */
 /** REQ-1159 (amended 2026-11-28): a function's Returns as its row shows it: the registered table
@@ -805,7 +806,7 @@ export function CommandsPage() {
           }}
           placeholder={t("commandsPage.filterPlaceholder")}
         />
-        <div className="page-actions">
+        <PageActions>
           {mayAuthor && !editingName && !showForm && (
             <Button
               leftSection={<Plus size={14} />}
@@ -815,7 +816,7 @@ export function CommandsPage() {
               {t("commandsPage.addCommand")}
             </Button>
           )}
-        </div>
+        </PageActions>
       </div>
 
       {error && (

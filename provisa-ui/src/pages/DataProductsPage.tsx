@@ -37,7 +37,6 @@ import {
 } from "./data-products/productSync";
 import type { DataProduct } from "../types/admin";
 import { fetchActions, type TrackedFunction } from "../api/actions";
-import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
 import { MultiSelect } from "../components/MultiSelect";
 import { useTagAssignments } from "../hooks/useTagQueries";
@@ -70,6 +69,7 @@ import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { useAuth } from "../context/AuthContext";
 import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { heldRoles } from "../lib/roles";
+import { PageActions } from "../components/PageActions";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
@@ -658,7 +658,7 @@ export function DataProductsPage() {
           onChange={updateSearch}
           placeholder={t("dataProductsTab.filterPlaceholder")}
         />
-        <div className="page-actions">
+        <PageActions>
           {/* Hidden while its form is open: the form ends with Save and Cancel. */}
           {canEdit && !creating && (
             <Button
@@ -670,13 +670,7 @@ export function DataProductsPage() {
             </Button>
           )}
           <ProductMapButton />
-          <HelpBubble
-            title={t("dataProductsTab.purposeTitle")}
-            paragraphs={[t("dataProductsTab.purposeBody")]}
-            ariaLabel={t("dataProductsTab.purposeAria")}
-            testId="data-products-purpose-help"
-          />
-        </div>
+        </PageActions>
       </div>
       {/* The list's facets, under the header's filter. */}
       <Group gap="sm" mb="sm" wrap="wrap">

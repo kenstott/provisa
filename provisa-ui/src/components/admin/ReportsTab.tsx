@@ -39,6 +39,7 @@ import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { OntologyDriftPanel } from "./OntologyDriftPanel";
 import { FilterInput } from "./FilterInput";
+import { PageActions } from "../PageActions";
 
 /** REQ-1386: drift is computed from the model's history and shown with this report. */
 const ONTOLOGY_QUALITY_REPORT = "ontology_quality";
@@ -245,7 +246,7 @@ export function ReportsTab({ title }: { title: string }) {
           onChange={setFilter}
           placeholder={t("reportsTab.filterPlaceholder")}
         />
-        <div className="page-actions">
+        <PageActions>
           {/* A report is a view registered in the ops domain, so adding one asks what
               registering a table asks; reading the reports is the ops domain's right. */}
           <CapabilityGate capability="table_registration">
@@ -258,7 +259,7 @@ export function ReportsTab({ title }: { title: string }) {
               {addOpen ? <X size={14} /> : t("reportsTab.addTitle")}
             </Button>
           </CapabilityGate>
-        </div>
+        </PageActions>
       </div>
       <SplitPane
         outOfList={detail.outOfList}

@@ -59,6 +59,7 @@ import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/Form
 
 import { useListSelection } from "../list/listSelection";
 import { ListBulkBar } from "../list/ListBulkBar";
+import { PageActions } from "../PageActions";
 const PAGE_SIZE = 50;
 
 type Kind = ScheduledTask["kind"];
@@ -696,7 +697,7 @@ export function ScheduledTasks({ title }: { title: string }) {
           placeholder={t("scheduledTasks.filterPlaceholder")}
           testId="scheduled-tasks-filter"
         />
-        <div className="page-actions">
+        <PageActions>
           <Button
             data-testid="scheduled-tasks-toggle-form"
             variant={mode === "create" ? "outline" : "filled"}
@@ -705,7 +706,7 @@ export function ScheduledTasks({ title }: { title: string }) {
           >
             {mode === "create" ? <X size={14} /> : t("scheduledTasks.addButton")}
           </Button>
-        </div>
+        </PageActions>
       </div>
       <Stack gap="md">
         {actionsError && (

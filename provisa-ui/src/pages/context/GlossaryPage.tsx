@@ -48,6 +48,7 @@ import {
   type GlossarySort,
   type TermRef,
 } from "./glossaryBook";
+import { PageActions } from "../../components/PageActions";
 
 const SORTS: readonly GlossarySort[] = ["name", "recent"];
 
@@ -105,7 +106,7 @@ export function GlossaryPage() {
         testId="glossary-search"
         remember={false}
       />
-      <div className="page-actions">
+      <PageActions>
         <MultiSelect
           aria-label={t("glossaryPage.domainFilter")}
           placeholder={domains.length === 0 ? t("glossaryPage.domainFilterPlaceholder") : undefined}
@@ -117,7 +118,7 @@ export function GlossaryPage() {
           comboboxProps={{ withinPortal: true }}
           data-testid="glossary-domain-filter"
         />
-      </div>
+      </PageActions>
     </div>
   );
 

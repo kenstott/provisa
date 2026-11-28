@@ -53,6 +53,7 @@ import { IndexBadge, ReaderBadges, StaleBadge, StatusBadge } from "./LibraryBadg
 import { LibraryAddForm } from "./LibraryAddForm";
 import { LibraryDetail } from "./LibraryDetail";
 import { addedOrRefreshed, libraryRowTexts, REVIEWS_DUE_PARAM, when } from "./libraryParts";
+import { PageActions } from "../../components/PageActions";
 
 /** How often the list is read again while a document is indexing, in milliseconds. */
 const POLL_MS = 3000;
@@ -236,7 +237,7 @@ export function LibraryPage() {
           testId="reflib-filter"
           remember="library"
         />
-        <div className="page-actions">
+        <PageActions>
           <Checkbox
             label={t("referenceLibrary.reviewsDueOnly")}
             checked={reviewsDueOnly}
@@ -266,7 +267,7 @@ export function LibraryPage() {
               {t("referenceLibrary.add")}
             </Button>
           )}
-        </div>
+        </PageActions>
       </div>
       <Text c="dimmed" size="sm" mb="sm" data-testid="reflib-why">
         {t("referenceLibrary.why")}

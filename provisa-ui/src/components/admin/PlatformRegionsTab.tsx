@@ -74,6 +74,7 @@ import { HotCacheStoreSettingsPanel, MaterializedSettingsPanel } from "./CacheSt
 import { GrantEditor } from "./GrantEditor";
 import { PlatformOrgEngines } from "./PlatformOrgEngine";
 import { PurposeBadges, PurposesLegend } from "./RegionPurposes";
+import { PageActions } from "../PageActions";
 
 interface Picked {
   /** null: a new region. */
@@ -266,7 +267,7 @@ export function PlatformRegionsTab({ title }: { title: string }) {
             testId="platform-regions-filter"
           />
         )}
-        <div className="page-actions">
+        <PageActions>
           {onRegions && data !== null && !data.read_only && (
             <Button
               variant={creating !== null ? "outline" : "filled"}
@@ -283,7 +284,7 @@ export function PlatformRegionsTab({ title }: { title: string }) {
               {creating !== null ? <X size={14} /> : t("platformRegions.add")}
             </Button>
           )}
-        </div>
+        </PageActions>
       </div>
       {body}
     </>

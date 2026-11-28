@@ -60,6 +60,7 @@ import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { useRequiredFields } from "../form/useRequiredFields";
 import { FilterInput } from "./FilterInput";
+import { PageActions } from "../PageActions";
 
 /**
  * REQ-1557, REQ-1558: the org's secrets — NAMES GO IN, VALUES NEVER COME BACK OUT.
@@ -352,7 +353,7 @@ function SecretsVault({ vault, title, header }: VaultProps) {
         placeholder={t("secretsTab.filterPlaceholder")}
         testId="secrets-filter"
       />
-      <div className="page-actions">
+      <PageActions>
         {state !== null && state.provider.writable && (
           <Button
             variant={form === "create" ? "outline" : "filled"}
@@ -363,7 +364,7 @@ function SecretsVault({ vault, title, header }: VaultProps) {
             {form === "create" ? <X size={14} /> : t("secretsTab.add")}
           </Button>
         )}
-      </div>
+      </PageActions>
     </div>
   );
   if (error && !state)

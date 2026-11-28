@@ -5431,6 +5431,7 @@
   "nl/packageRegistries.json::packageRegistries.saved": "Saved",
   "nl/packageRegistries.json::packageRegistries.scope": "Scope",
   "nl/packageRegistries.json::packageRegistries.scopeHelp": "For example @acme. Leave empty for a registry with no scope.",
+  "nl/pageActions.json::pageActions.more": "More actions",
   "nl/pageHelp.json::pageHelp.docsLink": "Read the documentation",
   "nl/pageHelp.json::pageHelp.purpose.aiModels": "Choose the AI vendor and model for each assisted operation, and set the organization's API keys.",
   "nl/pageHelp.json::pageHelp.purpose.billing": "See your plan, the current bill and the next charge, and move between plans.",
