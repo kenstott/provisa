@@ -692,6 +692,63 @@ async def export_model_config(state: Any, role: str, request: Any) -> dict:
     return {"filename": f"{org_id}-config.yaml", "yaml": bytes(response.body).decode("utf-8")}
 
 
+# -- classification kinds (REQ-2147, amended 2026-11-25) ------------------------------------------
+# Each calls the route Context > Classification calls, with the caller's request.
+
+
+async def list_classification_kinds(state: Any, role: str, request: Any) -> dict:
+    require_role(role, state)
+    from provisa.api.admin.profiler_classifications_router import list_kinds
+
+    return await list_kinds(request)
+
+
+async def create_classification_kind(
+    state: Any,
+    role: str,
+    request: Any,
+    label: str,
+    pattern: str,
+    check: str | None,
+    ignore: str | None,
+    threshold: float,
+    sensitive: bool,
+    maskPreset: str | None,  # noqa: N803 -- the route's field name
+    term: str,
+) -> dict:
+    require_role(role, state)
+    from provisa.api.admin.profiler_classifications_router import CustomKind, create_kind
+
+    body = CustomKind(
+        label=label,
+        pattern=pattern,
+        check=check,
+        ignore=ignore,
+        threshold=threshold,
+        sensitive=sensitive,
+        maskPreset=maskPreset,
+        term=term,
+    )
+    return await create_kind(request, body)
+
+
+async def change_classification_kind(
+    state: Any, role: str, request: Any, kind_id: str, **change: Any
+) -> dict:
+    """Only the fields the model sent are changed: the route reads which were set."""
+    require_role(role, state)
+    from provisa.api.admin.profiler_classifications_router import KindChange, change_kind
+
+    return await change_kind(request, kind_id, KindChange(**change))
+
+
+async def delete_classification_kind(state: Any, role: str, request: Any, kind_id: str) -> dict:
+    require_role(role, state)
+    from provisa.api.admin.profiler_classifications_router import delete_kind
+
+    return await delete_kind(request, kind_id)
+
+
 # -- tags: the edits of the tag assignment form and the tag editor, as the caller ----------------
 # Each runs the admin mutation the form sends, with the caller's request, and returns its result
 # unchanged (tag_edit.run), as set_table_profiler saves through updateTable. In Polly's chat these

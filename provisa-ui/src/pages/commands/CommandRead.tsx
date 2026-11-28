@@ -17,7 +17,6 @@ import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import type {
-  ActionArg,
   DatasetColumn,
   InlineField,
   StatementContract,
@@ -27,7 +26,7 @@ import type {
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { CodeEditorField } from "../../components/CodeEditorField";
 import { entityName } from "../../components/entityName";
-import { IMPL_KINDS, isNativeSql } from "./types";
+import { IMPL_KINDS, argumentsText, isNativeSql } from "./types";
 
 function ReadHeading({ children }: { children: string }) {
   return (
@@ -39,20 +38,6 @@ function ReadHeading({ children }: { children: string }) {
 
 const roles = (list: readonly string[] | null | undefined) =>
   list && list.length > 0 ? list.join(", ") : null;
-
-/** REQ-1159 (amended 2026-11-27): each argument with its kind: a value, or a relation (a table
- *  reference its service reads, or a result set it is given). An argument that names no kind is
- *  a value: column_value is the kind's declared default (REQ-885, models.FunctionArgument). */
-const args = (list: readonly ActionArg[], t: (key: string) => string) =>
-  list.length > 0
-    ? list
-        .map(
-          (a) =>
-            `${a.name}: ${a.type} (${t(`commandsPage.argKind.${a.argKind ?? "column_value"}`)})` +
-            ("default" in a ? ` = ${JSON.stringify(a.default)}` : ""),
-        )
-        .join(", ")
-    : null;
 
 /** Who sees each column of the response and how it is masked, one group per column. */
 function ResponseColumns({
@@ -128,7 +113,7 @@ function useCommonFields(c: TrackedFunction | TrackedWebhook, type: "function" |
     ],
     tail: [
       { label: t("commandFormFields.description"), value: c.description },
-      { label: t("commandFormFields.arguments"), value: args(c.arguments, t) },
+      { label: t("commandFormFields.arguments"), value: argumentsText(c.arguments, t) },
     ],
   };
 }

@@ -122,11 +122,19 @@ export function TagWhereApplied({ tagId, use }: { tagId: string; use: ContextTag
 }
 
 /** The classification kinds that assign the tag, filtered by the kind's name. */
-function ClassificationGroup({ tagId, kinds }: { tagId: string; kinds: string[] }) {
+function ClassificationGroup({
+  tagId,
+  kinds,
+}: {
+  tagId: string;
+  kinds: ContextTagUse["classificationKinds"];
+}) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState("");
-  const label = (k: string) => t(`classificationKinds.kind.${k}`);
-  const shown = kinds.filter((k) => matchesQuery([k, label(k)], filter));
+  // REQ-2147 (amended 2026-11-25): a custom kind is named by the org's label.
+  const label = (k: ContextTagUse["classificationKinds"][number]) =>
+    k.custom ? k.label : t(`classificationKinds.kind.${k.id}`);
+  const shown = kinds.filter((k) => matchesQuery([k.id, label(k)], filter));
   return (
     <Stack gap="xs">
       <FilterInput
@@ -138,8 +146,12 @@ function ClassificationGroup({ tagId, kinds }: { tagId: string; kinds: string[] 
       />
       <Group gap={8}>
         {shown.map((k) => (
-          <Text size="sm" component="span" key={k}>
-            <EntityLink kind="classification" id={k} testId={`tags-classification-${tagId}-${k}`}>
+          <Text size="sm" component="span" key={k.id}>
+            <EntityLink
+              kind="classification"
+              id={k.id}
+              testId={`tags-classification-${tagId}-${k.id}`}
+            >
               {label(k)}
             </EntityLink>
           </Text>

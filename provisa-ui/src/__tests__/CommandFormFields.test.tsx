@@ -12,7 +12,7 @@
 // per-kind binding fields (script/http/grpc/python) plus relation-argument kinds.
 
 import { useState } from "react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "../test-utils/render";
 import { CommandFormFields } from "../pages/commands/CommandFormFields";
 import { EMPTY_FORM } from "../pages/commands/types";
@@ -542,5 +542,138 @@ describe("CommandFormFields — native SQL on a relational source (REQ-1988)", (
       />,
     );
     expect(screen.queryByTestId("command-binding-native-sql")).not.toBeInTheDocument();
+  });
+});
+
+// REQ-1159 (amended 2026-11-27): a command written as entered code (REQ-1993). Its code is typed
+// in the editor code sources use; its kind, arguments and columns are its declaration's, shown
+// read-only and never typed by hand.
+describe("CommandFormFields — Code (entered)", () => {
+  function EnteredHarness({ initial }: { initial: Partial<FormState> }) {
+    const [form, setForm] = useState<FormState>({ ...EMPTY_FORM, ...initial });
+    return (
+      <>
+        <CommandFormFields
+          form={form}
+          setForm={setForm}
+          sources={[{ id: "pg", type: "postgresql" } as never]}
+          tables={[]}
+          domainHints={[]}
+          availableFunctions={[]}
+          loadingFunctions={false}
+          roleOptions={[]}
+        />
+        <output data-testid="state">{JSON.stringify(form)}</output>
+      </>
+    );
+  }
+  const state = () => JSON.parse(screen.getByTestId("state").textContent!) as FormState;
+
+  it("is offered beside Python (in-process), which stays", async () => {
+    render(<EnteredHarness initial={{ actionType: "function" }} />);
+    fireEvent.click(screen.getByTestId("command-impl-kind-select"));
+    expect(
+      await screen.findByRole("option", { name: "Code (entered)", hidden: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Python (in-process)", hidden: true }),
+    ).toBeInTheDocument();
+  });
+
+  it("chosen, opens the Python code editor, its dependencies and the function it calls", async () => {
+    render(
+      <EnteredHarness
+        initial={{
+          actionType: "function",
+          implKind: "source_procedure",
+          sourceId: "pg",
+          kind: "mutation",
+          arguments: [{ name: "id", type: "Int" }],
+          outputColumns: [{ name: "ok", type: "boolean" }],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("command-impl-kind-select"));
+    fireEvent.click(await screen.findByRole("option", { name: "Code (entered)", hidden: true }));
+    expect(languageOf(editorOf("command-entered-code"))).toBe("python");
+    expect(screen.getByTestId("command-entered-dependencies")).toBeInTheDocument();
+    expect(screen.getByTestId("command-entered-function")).toBeInTheDocument();
+    expect(screen.queryByTestId("command-binding-callable")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-source-select")).not.toBeInTheDocument();
+    // What another implementation held is not the declaration's: none of it is kept.
+    expect(state()).toMatchObject({
+      implKind: "code_entered",
+      sourceId: "",
+      kind: "",
+      arguments: [],
+      outputColumns: [],
+    });
+  });
+
+  it("keeps the code and the function as they are typed", async () => {
+    render(<EnteredHarness initial={{ actionType: "function", implKind: "code_entered" }} />);
+    fireEvent.change(screen.getByTestId("command-entered-function"), {
+      target: { value: "greet" },
+    });
+    fireEvent.change(screen.getByTestId("command-entered-dependencies"), {
+      target: { value: "httpx==0.27.0" },
+    });
+    const code = 'def greet(name: str) -> str:\n    """@query"""\n    return name\n';
+    typeInto(editorOf("command-entered-code"), code);
+    await vi.waitFor(() =>
+      expect(state()).toMatchObject({
+        enteredCode: code,
+        functionName: "greet",
+        enteredDependencies: "httpx==0.27.0",
+      }),
+    );
+  });
+
+  it("shows its kind, arguments and columns read-only, as declared", () => {
+    render(
+      <EnteredHarness
+        initial={{
+          actionType: "function",
+          implKind: "code_entered",
+          kind: "query",
+          functionName: "greet",
+          arguments: [
+            { name: "name", type: "text", argKind: "column_value" },
+            { name: "times", type: "bigint", argKind: "column_value" },
+          ],
+          outputColumns: [
+            { name: "name", type: "text" },
+            { name: "times", type: "bigint" },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByTestId("command-entered-kind")).toHaveTextContent("Query");
+    expect(screen.getByTestId("command-entered-arguments")).toHaveTextContent(
+      "name: text (value), times: bigint (value)",
+    );
+    expect(screen.getByTestId("command-entered-columns")).toHaveTextContent(
+      "name: text, times: bigint",
+    );
+    // Nothing to type them into: no argument or column editor, no kind, return type or written
+    // table.
+    expect(screen.queryByTestId("command-arguments")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("output-columns")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "+ Add Argument" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-return-type-select")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-writes-table-select")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-materialize-switch")).not.toBeInTheDocument();
+  });
+
+  it("shows none of them before the command is saved", () => {
+    render(
+      <EnteredHarness initial={{ actionType: "function", implKind: "code_entered", kind: "" }} />,
+    );
+    for (const id of [
+      "command-entered-kind",
+      "command-entered-arguments",
+      "command-entered-columns",
+    ])
+      expect(screen.getByTestId(id)).toHaveTextContent("—");
   });
 });

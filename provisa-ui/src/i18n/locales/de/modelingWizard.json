@@ -4,6 +4,8 @@
     "next": "Weiter",
     "toReview": "Prüfen",
     "back": "Zurück",
+    "skipStep": "Schritt überspringen",
+    "close": "Schließen",
     "remove": "Entfernen",
     "domainHelp": "Die Domäne, unter der jede von diesem Assistenten erstellte Tabelle registriert wird: ihr Namensraum für Zugriffskontrolle und Abfragen.",
     "validTime": "Gültigkeitszeit",

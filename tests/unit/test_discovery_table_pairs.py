@@ -37,6 +37,7 @@ from provisa.discovery.runner import SAME_NAME, Tally, execute
 from provisa.discovery.windows import bound, plan, table_pairs
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
+from provisa.profiler.classify import catalogue
 from tests.unit.discovery_answers import (
     answer,
     column_pair,
@@ -131,7 +132,7 @@ def test_one_set_pairs_each_two_tables_once_a_table_with_itself_included():
 
 def test_the_count_before_run_bounds_the_calls_and_counts_calls():
     source, target = [ORDERS, NOTES], [CUSTOMERS, NOTES]
-    k, calls, pairs = bound(source, target, 100_000, 150, SAMPLE_VALUES)
+    k, calls, pairs = bound(source, target, 100_000, 150, SAMPLE_VALUES, catalogue())
     the_plan = plan(source, target, 100_000, 150)
     assert calls == 2
     assert len(the_plan.calls) <= calls and pairs >= the_plan.table_pairs

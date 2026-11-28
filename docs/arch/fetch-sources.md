@@ -45,7 +45,7 @@ No declared dependency is a direct GitHub URL (the test checks `pyproject.toml`)
 | Swagger UI on the REST docs page | `provisa/_ui/swagger-ui/`, copied from the `swagger-ui-dist` npm package by the UI build | served locally | yes, offline | npm already |
 | Swagger UI and ReDoc on FastAPI's own `/data/openapi/docs` and `/data/openapi/redoc` | browser loads `cdn.jsdelivr.net` and the `fastapi.tiangolo.com` favicon (FastAPI's defaults) | page view | yes, in the browser | serve both from npm packages in the UI build |
 | Tour sample Parquet file | `provisa.dev/demo-data/supplies.parquet` | the tour adds its sample source | yes | ship the file in the wheel |
-| Published demo bundles | `ghcr.io/kenstott` (OCI), or `PROVISA_DEMO_REGISTRY` | a demo is pulled | yes | open question: none of the three registries hosts OCI artifacts |
+| Published demo bundles | `ghcr.io/simpleishard-llc` (OCI), or `PROVISA_DEMO_REGISTRY` | a demo is pulled | yes | open question: none of the three registries hosts OCI artifacts |
 
 ## On demand: normal operation
 

@@ -69,21 +69,84 @@ body {
 .navbar-links {
   display: flex;
   gap: 0.75rem;
-  flex: 0 1 auto;
+  /* REQ-2277: the single row is used only where it fits whole (measured live in NavBar.tsx), so
+     the links keep their size and what is free goes to the org's name. */
+  flex: 0 0 auto;
   margin-right: auto;
-  /* The bar always fits its window: what is free goes to the org's name, and only once that is at
-     its least do the links give way (they may shrink below their content), taking a second line
-     when one cannot hold them. The controls at the end keep their size on the first line. */
-  min-width: 0;
+}
+/* REQ-2277: where the single row does not fit, the bar is two rows. Row 1: logo, org, pickers and
+   icon actions, the pickers at the end. Row 2: the page links, whole, directly above the
+   sub-navigation row. The same elements as the single row, only placed: switching rows never
+   remounts a picker. The pickers are given their width before the org's name takes what is
+   left. */
+.navbar-rows {
+  display: grid;
+  grid-template-columns: max-content 1fr minmax(0, max-content);
+  grid-template-areas:
+    "brand org role"
+    "links links links";
+  row-gap: 0.5rem;
+}
+.navbar-rows .navbar-brand {
+  grid-area: brand;
+}
+.navbar-rows .navbar-org {
+  grid-area: org;
+}
+.navbar-rows .navbar-role {
+  grid-area: role;
+}
+.navbar-rows .navbar-links {
+  grid-area: links;
+  margin-right: 0;
+  /* Under the 768-pixel floor REQ-2277 sets (a phone), the links take another line rather than
+     push the page sideways. */
   flex-wrap: wrap;
   row-gap: 0.25rem;
+}
+/* The one read of the single row's natural width (NavBar.tsx measureSingleRow): every child at its
+   natural size, the org's name at its least, since it only ever takes what is free. */
+.navbar.navbar-measure {
+  width: max-content;
+}
+.navbar-measure .navbar-org {
+  flex: 0 0 auto;
+  max-width: 4rem;
+}
+/* The pickers give way (their labels cut at the end) before anything leaves row 1: it holds every
+   picker at any width down to 768 pixels. The icon actions keep their size. */
+.navbar-role {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.navbar-role > *,
+.navbar-role .mantine-Button-root,
+.navbar-domain-btn {
+  min-width: 0;
+}
+.navbar-domain-btn {
+  max-width: 100%;
+}
+.navbar-domain-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.navbar-role .mantine-ActionIcon-root,
+.navbar-user-wrapper {
+  flex-shrink: 0;
+}
+/* A tablet window: the logo's mark stands for the brand (the link keeps its "Home" name). */
+@media (max-width: 64em) {
+  .navbar-rows .navbar-brand a span {
+    display: none;
+  }
 }
 .navbar-links a,
 .navbar-links .nav-group-label {
   white-space: nowrap;
 }
-.navbar-brand,
-.navbar-role {
+.navbar-brand {
   flex: 0 0 auto;
 }
 /* The org's name, beside the controls: as wide as what is free up to its most, and cut there, said
@@ -111,8 +174,10 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A laptop-width window: closer spacing holds every link on one line for longer. */
-@media (max-width: 90em) {
+/* Closer spacing keeps the single row for longer: measured 2026-11-27 with every link and picker in
+   the longest locale (ru), the row needs 1687px closely spaced and 1827px at the wide spacing, so
+   the wide spacing starts only above 116em (with a scrollbar spare). */
+@media (max-width: 116em) {
   .navbar {
     gap: 0.5rem;
     padding-inline: 1rem;
@@ -168,6 +233,8 @@ body {
 /* Subnav — second horizontal bar */
 .subnav {
   display: flex;
+  /* REQ-2277: never wider than the window; a narrow one takes the tabs onto another line. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   padding: 0.375rem 1.5rem;
@@ -242,6 +309,7 @@ body {
   gap: 0.25rem; /* space before the chevron, matching Button rightSection */
 }
 .navbar-domain-btn svg {
+  flex-shrink: 0;
   color: var(--text-muted);
 }
 .navbar-domain-btn:hover {

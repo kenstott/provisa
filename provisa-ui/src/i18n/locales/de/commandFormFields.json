@@ -72,6 +72,9 @@
     "argDefault": "Standardwert des Arguments {{name}}",
     "argDefaultPlaceholder": "Standardwert (leer lassen, wenn erforderlich)",
     "nativeSql": "Natives SQL",
-    "nativeSqlHint": "SQL im eigenen Dialekt der Quelle, eine Anweisung oder mehrere, in einer Transaktion auf der Quelle ausgeführt: Alle werden festgeschrieben oder keine. Schreiben Sie ein Argument als {{placeholder}}; jedes wird als Wert gebunden. Die Antwort sind die Zeilen der letzten Anweisung."
+    "nativeSqlHint": "SQL im eigenen Dialekt der Quelle, eine Anweisung oder mehrere, in einer Transaktion auf der Quelle ausgeführt: Alle werden festgeschrieben oder keine. Schreiben Sie ein Argument als {{placeholder}}; jedes wird als Wert gebunden. Die Antwort sind die Zeilen der letzten Anweisung.",
+    "enteredCodeHint": "Python, im Modell gespeichert und in einer Sandbox ausgeführt. Markieren Sie die Funktion, die der Befehl aufruft, mit @query (sie liest) oder @command (sie schreibt); typisieren Sie ihre Parameter und ihr Ergebnis.",
+    "enteredFunctionHint": "Die Funktion im Code, die dieser Befehl aufruft.",
+    "enteredDeclarationHint": "Wird bei jedem Speichern des Befehls aus der Deklaration der Funktion gelesen."
   }
 }

@@ -16,6 +16,7 @@
     "notJson": "{{name}} n'est pas du JSON",
     "notRows": "{{name}} : collez un CSV dont la première ligne nomme les colonnes, ou un tableau JSON d'objets",
     "overCap": "{{name}} : au plus {{cap}} lignes",
-    "notReadable": "{{name}} : la table choisie n'est pas une table que vous pouvez lire"
+    "notReadable": "{{name}} : la table choisie n'est pas une table que vous pouvez lire",
+    "noTableFits": "Aucune table que vous pouvez lire n’a les colonnes {{columns}}."
   }
 }

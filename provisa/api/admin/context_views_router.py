@@ -78,13 +78,14 @@ def tag_usages(
     tag_ids: Iterable[str],
     assignments: Iterable[dict],
     row_filters: dict[str, int],
-    sensitive_kinds: list[str],
+    sensitive_kinds: list[dict],
     readable: ColumnReadable,
 ) -> list[dict]:  # REQ-2259
     """Per tag, where it is applied on tables and columns (named when readable, else counted)
     and what depends on it: the number of row filters keyed on it and the classification kinds
-    whose acceptance assigns it. ``assignments`` are table and column assignments with
-    ``base_tag_id``."""
+    whose acceptance assigns it (``sensitive_kinds``, each with its id, label and whether it is
+    custom: a custom kind's label is the org's, a shipped one's is translated by its id).
+    ``assignments`` are table and column assignments with ``base_tag_id``."""
     by_tag: dict[str, list[dict]] = {}
     for a in assignments:
         by_tag.setdefault(a["base_tag_id"], []).append(a)
@@ -111,6 +112,8 @@ def kind_detections(
 ) -> list[dict]:  # REQ-2259
     """Each classification kind, with the columns it was detected on (``accepted``: rows with
     ``kind``, ``table_id``, ``table_ref`` and ``column_name``), named when readable, else counted."""
+    from provisa.profiler.classifications import kind_doc
+
     by_kind: dict[str, list[dict]] = {}
     for a in accepted:
         by_kind.setdefault(a["kind"], []).append(a)
@@ -119,11 +122,7 @@ def kind_detections(
         named, hidden = placed(by_kind.get(k.id, []), readable)
         out.append(
             {
-                "id": k.id,
-                "sensitive": k.sensitive,
-                "threshold": k.threshold,
-                "maskPreset": k.mask_preset,
-                "enabled": k.id not in disabled,
+                **kind_doc(k, k.id not in disabled),
                 "detections": named,
                 "hiddenDetections": hidden,
             }
@@ -142,7 +141,7 @@ async def tags_in_context(request: Request) -> dict:
     from provisa.api.admin.read_rights import reader_for_request
     from provisa.core.repositories import tag as tag_repo
     from provisa.core.schema_org import rls_rules
-    from provisa.profiler.classify import catalogue
+    from provisa.profiler import classifications
 
     reader = reader_for_request(request)
     pool = await _pool()
@@ -161,7 +160,11 @@ async def tags_in_context(request: Request) -> dict:
                 .group_by(rls_rules.c.tag_id)
             )
         ).fetchall()
-    sensitive = [k.id for k in catalogue() if k.sensitive]
+    sensitive = [
+        {"id": k.id, "label": k.label, "custom": k.custom}
+        for k in await classifications.org_kinds(pool)
+        if k.sensitive
+    ]
     return {
         "tags": tag_usages(
             [t["id"] for t in tags],
@@ -178,15 +181,13 @@ async def classification_in_context(request: Request) -> dict:
     _require_glossary_read(request)
     require_active_org_id(request)
     from provisa.api.admin.read_rights import reader_for_request
-    from provisa.core.org_settings import read_org_overrides
     from provisa.core.schema_org import profiler_classifications as pc
     from provisa.core.schema_org import registered_tables as rt
     from provisa.profiler import classifications
-    from provisa.profiler.classify import catalogue
 
     reader = reader_for_request(request)
     pool = await _pool()
-    disabled = classifications.disabled_of(await read_org_overrides(pool))
+    settings = await classifications.read_settings(pool)
     async with pool.acquire() as conn:
         rows = (
             await cast("Connection", conn).execute_core(
@@ -212,7 +213,10 @@ async def classification_in_context(request: Request) -> dict:
         }
         for r in rows
     ]
-    return {"kinds": kind_detections(catalogue(), disabled, accepted, reader.column)}
+    return {
+        "kinds": kind_detections(settings.kinds, settings.disabled, accepted, reader.column),
+        **classifications.kind_choices(),
+    }
 
 
 def awaiting_by_table(

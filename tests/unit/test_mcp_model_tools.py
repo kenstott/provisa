@@ -148,6 +148,7 @@ _ENV_RIGHT = "Missing capability: 'environment_management'"
 _DATA_RIGHT = "Missing capability: 'environment_data'"
 _DQ_READ = "Missing capability: 'dq_read'"  # REQ-2155
 _DQ_RW = "Missing capability: 'dq_rw'"
+_SENSITIVE = "Missing capability: 'sensitive_data'"  # REQ-2147: the kinds are the steward's
 
 _REFUSALS = [
     ("find_table_id", {"domain": "sales", "table": "orders"}, _TABLE_RIGHT),
@@ -196,6 +197,23 @@ _REFUSALS = [
     ("generate_environment_model", {"env": "dev"}, _DATA_RIGHT),
     ("reset_environment_mutations", {"env": "dev"}, _DATA_RIGHT),
     ("export_model_config", {}, "user_management in acme required"),
+    ("list_classification_kinds", {}, _SENSITIVE),
+    (
+        "create_classification_kind",
+        {
+            "label": "Employee ID",
+            "pattern": "EMP-\\d{6}",
+            "check": None,
+            "ignore": None,
+            "threshold": 0.9,
+            "sensitive": False,
+            "maskPreset": None,
+            "term": "employee id",
+        },
+        _SENSITIVE,
+    ),
+    ("change_classification_kind", {"kind_id": "city", "threshold": 0.5}, _SENSITIVE),
+    ("delete_classification_kind", {"kind_id": "custom.employee_id"}, _SENSITIVE),
 ]
 
 
