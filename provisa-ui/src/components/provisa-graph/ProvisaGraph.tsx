@@ -37,7 +37,7 @@ import {
 } from "./core";
 import { cyCanvas, type CyCanvas } from "./cyCanvas";
 import { exportJpeg, exportJson, exportPng, exportSvg } from "./exportImage";
-import { flowLayout, flowParts, foldsLast, packUnder } from "./flow";
+import { flowLayout, flowParts, foldsLast, layerGap, packUnder } from "./flow";
 import { GraphControls, type GraphCommandButton, type GraphCopy } from "./GraphControls";
 import { GraphLegend } from "./GraphLegend";
 import { GroupResize } from "./GroupResize";
@@ -555,7 +555,12 @@ export function ProvisaGraph({
           finish();
         };
         // Every group is laid out, the ones no line reaches too: ELK stacks their nodes.
-        laying.run(cy.layout(flowLayout(cy.elements()) as Parameters<typeof cy.layout>[0]), placed);
+        // The layers stand far enough apart for the widest line's label.
+        const gap = layerGap(cy.edges().map((e) => e.data("label") as string));
+        laying.run(
+          cy.layout(flowLayout(cy.elements(), gap) as Parameters<typeof cy.layout>[0]),
+          placed,
+        );
       } else if (preset === "force") {
         // A move turns the line between a pair of nodes, which decides which way its lines bend.
         cy.on("dragfree", 'node[kind = "node"]', () => bendPairs(c));
@@ -803,16 +808,12 @@ export function ProvisaGraph({
   ) : null;
 
   // A download is of the placed drawing: none while a layout runs.
+  // These views draw no hulls over the canvas.
+  const image = (cy: CyInstance) => ({ cy, bg: tokens.canvas, name: exportName, hulls: null });
   const exports = {
-    svg: () =>
-      placedRef.current &&
-      exportSvg(placedRef.current as unknown as CyInstance, tokens.canvas, exportName),
-    png: () =>
-      placedRef.current &&
-      exportPng(placedRef.current as unknown as CyInstance, tokens.canvas, exportName),
-    jpeg: () =>
-      placedRef.current &&
-      exportJpeg(placedRef.current as unknown as CyInstance, tokens.canvas, exportName),
+    svg: () => placedRef.current && exportSvg(image(placedRef.current as unknown as CyInstance)),
+    png: () => placedRef.current && exportPng(image(placedRef.current as unknown as CyInstance)),
+    jpeg: () => placedRef.current && exportJpeg(image(placedRef.current as unknown as CyInstance)),
     ...(exportData ? { json: () => exportJson(exportData(), exportName) } : {}),
   };
 

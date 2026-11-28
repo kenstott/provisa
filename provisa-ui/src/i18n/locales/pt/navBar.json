@@ -62,6 +62,7 @@
     "comingSoon": "{{label}} — em breve",
     "domainsToggle": "Domínios ({{checked}}/{{total}})",
     "domainsLabel": "Domínios",
+    "domainsSystem": "Sistema",
     "tourResume": "Retomar tour guiado",
     "tourMenu": "Abrir Aprofundar",
     "tourStart": "Fazer um tour guiado",

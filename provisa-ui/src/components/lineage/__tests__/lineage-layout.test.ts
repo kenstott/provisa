@@ -21,6 +21,7 @@ import {
   edgeText,
   lanesFrom,
   rowPosition,
+  transformLabel,
   viewsBetween,
 } from "../lineage-layout";
 import type { LineageGraphData } from "../../../api/lineage";
@@ -334,12 +335,56 @@ describe("buildLineageModel", () => {
     });
   });
 
-  it("folds a collapsed relation's edges onto its box and reports the count", () => {
+  it("folds a collapsed relation's edges onto its box, naming each transform once with the count", () => {
     const m = buildLineageModel(GRAPH, new Set(["orders"]));
     const orders = m.boxes.find((b) => b.id === "rel:orders")!;
     expect(orders.collapsed).toBe(true);
     expect(orders.rows).toHaveLength(2); // kept for the header count, not drawn
-    const folded = m.edges.find((e) => e.source === "rel:orders");
-    expect(folded).toMatchObject({ target: "cte.total", count: 2, label: "" });
+    const folded = m.edges.find((e) => e.source === "rel:orders")!;
+    expect(folded).toMatchObject({ target: "cte.total", count: 2, label: "*" });
+    expect(edgeText(folded)).toBe("* · 2 columns");
+  });
+
+  // REQ-2239 (amended 2026-11-27): both lineage views label edges with their transforms.
+  it("names every distinct transform of the columns rolled into one drawn edge", () => {
+    const g: LineageGraphData = {
+      nodes: [
+        { id: "o.a", column: "a", relation: "o", kind: "source", materialized: false },
+        { id: "o.b", column: "b", relation: "o", kind: "source", materialized: false },
+        { id: "o.c", column: "c", relation: "o", kind: "source", materialized: false },
+        { id: "r.total", column: "total", relation: "r", kind: "derived", materialized: false },
+        { id: "r.n", column: "n", relation: "r", kind: "derived", materialized: false },
+        { id: "r.c", column: "c", relation: "r", kind: "derived", materialized: false },
+      ],
+      edges: [
+        { source: "o.a", target: "r.total", transform: "SUM(a)", ops: [op("SUM")] },
+        { source: "o.b", target: "r.n", transform: "COUNT(b)", ops: [op("COUNT")] },
+        { source: "o.c", target: "r.c", transform: "c", ops: [op("c", "identity")] },
+      ],
+      outputs: ["r.total", "r.n", "r.c"],
+      cycles: [],
+    };
+    const m = buildLineageModel(g, new Set(["o", "r"]));
+    expect(m.edges).toHaveLength(1);
+    expect(m.edges[0]).toMatchObject({ count: 3, label: "SUM, COUNT" });
+    expect(edgeText(m.edges[0])).toBe("SUM, COUNT · 3 columns");
+  });
+
+  it("names a cast as its op names it, and a function by its literal arguments", () => {
+    expect(
+      transformLabel({ transform: "CAST(a AS INT)", ops: [{ name: "CAST", kind: "sql_function" }] }),
+    ).toBe("CAST");
+    expect(
+      transformLabel({
+        transform: "SUBSTRING(a, 1, 3)",
+        ops: [{ name: "SUBSTRING", kind: "sql_function", args: ["1", "3"] }],
+      }),
+    ).toBe("SUBSTRING(1, 3)");
+  });
+
+  it("names an OpenLineage-reported edge by its facet's transform, having no parsed ops", () => {
+    expect(
+      transformLabel({ transform: "DIRECT:AGGREGATION", ops: [], origin: "openlineage" }),
+    ).toBe("DIRECT:AGGREGATION");
   });
 });

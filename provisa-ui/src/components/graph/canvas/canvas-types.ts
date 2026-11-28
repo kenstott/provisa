@@ -63,7 +63,8 @@ export interface CanvasProps {
   /** A view a navigation asked for (Polly's navigate): its layout, and whether every group starts
    *  collapsed. Applied once per ``seq``, after which the viewer's own changes stand. */
   requestedView?: { layout?: LayoutMode; collapseGroups?: boolean; seq: number };
-  hullSvgRef?: React.Ref<SVGSVGElement>;
+  /** The view's name, which a downloaded image takes (REQ-2239). */
+  exportName: string;
   /** Every node of a label, or every edge of a type, picked out (an Overview pill): those stand
    *  out and the rest dim. A click on the canvas's background asks for it to be cleared. */
   highlight?: CanvasHighlight | null;

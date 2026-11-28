@@ -374,6 +374,30 @@ export abstract class BaseScene<H> {
     this.invalidate();
   }
 
+  /** REQ-2239 (amended 2026-11-27): a zoom button's step about the view's target. ``factor`` above
+   * 1 zooms in: the 3D camera comes that many times nearer, within the orbit's distance bounds;
+   * the 2D camera's zoom is multiplied by it. A camera move under way stops where it is. */
+  zoom(factor: number) {
+    this.tween = null;
+    if (this.camera instanceof THREE.OrthographicCamera) {
+      this.camera.zoom = THREE.MathUtils.clamp(
+        this.camera.zoom * factor,
+        this.controls.minZoom,
+        this.controls.maxZoom,
+      );
+      this.camera.updateProjectionMatrix();
+    } else {
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      const distance = THREE.MathUtils.clamp(
+        offset.length() / factor,
+        this.controls.minDistance,
+        this.controls.maxDistance,
+      );
+      this.camera.position.copy(this.controls.target).add(offset.setLength(distance));
+    }
+    this.invalidate();
+  }
+
   setRotate(on: boolean) {
     this.turnAsked = on;
     this.applyTurn();

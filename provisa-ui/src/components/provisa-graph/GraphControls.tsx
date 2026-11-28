@@ -23,7 +23,8 @@ import { Tip } from "../Tip";
 import { CanvasButton, CanvasControls, CONTROL_ICON, FullscreenButton } from "./CanvasControls";
 import { fitWhole, zoomAboutCentre, type GraphExports } from "./viewport";
 
-const ZOOM_STEP = 1.3;
+/** One zoom button's step, in or out: the same on every graph, 2D and 3D (Stage3D). */
+export const ZOOM_STEP = 1.3;
 
 /** A command of the view's own, after the shared ones: its name, icon and action. */
 export interface GraphCommandButton {
