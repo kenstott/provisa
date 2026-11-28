@@ -115,7 +115,7 @@ type BB = { x1: number; x2: number; y1: number; y2: number };
  * hidden, ELK, then the arrangement. */
 async function laidOut(columnDetail: ColumnDetail, gridSnap: number, aspectRatio: number) {
   const erd = buildErdElements(TABLES, RELS, DOMAINS, new Set(), new Set(), "all");
-  const elements = graphElements(erdGraph(erd, TABLES), (type) => type, columnDetail);
+  const elements = graphElements(erdGraph(erd, TABLES), columnDetail);
   const cy = cytoscape({
     headless: true,
     styleEnabled: true,

@@ -44,37 +44,37 @@ brand scale (theme.ts).
 | edge | `gray-5` | `dark-3` |
 | accent (hover, selection, focus) | brand-6 | brand-4 |
 
-Sizes: a node is at least 180px wide and as wide as its name and type's line need, up to 360px
-(model.ts `boxWidth`); past that its name wraps and the node grows in height. An ERD table's
-columns wrap inside that width and grow it in height. A node is 44px tall with two lines. The label is 11px, weight 500 (cytoscape draws one font per label: the name
-and the type's line share it; the type's line is uppercase). Edges are 1px. Group label 10px
-uppercase, weight 700.
+Sizes (REQ-2239, amended 2026-11-28, THE SHARED NODE STYLE IS COMPACT: a node spends its space on
+its content, not on decoration): a box is as wide as its text needs, from 64px up to 240px
+(model.ts `boxWidth`, `NODE_MAX_WIDTH`); text past that is ellipsised, never wrapped, and the box
+never grows for it. A box with its name only is 24px tall; each body row adds 11px under the name's
+14px row, with 5px above and below and 2px between the name and the body (`SIZE`, `nodeHeight`).
+The name is 11px, weight 600; body rows 9.5px monospace. Edges are 1px. Group label 10px uppercase,
+weight 700.
 
 ## Nodes
 
 - One shape (save the junction's diamond, below): a rounded rectangle, radius 4, a 1px border.
-- A band on its leading (left) edge, 6px wide, in the type's colour (`NODE_TYPES`), Mantine's
+- A thin band on its leading (left) edge, 3px wide, in the type's colour (`NODE_TYPES`), Mantine's
   shade 6 of the type's hue unless a darker or lighter shade sets it apart. Each node role has its
   own colour across every kind of graph (REQ-2239, amended 2026-11-27): two types share a colour
   only when they are one concept under two names (`SAME_CONCEPT`: domain and group, term and
   concept, column and its fold node, a table and a field outside the model). The 3D ontology graph
   and the ontology sidebar's legend draw the same colours.
-- An icon, the type's (lucide's), drawn as the node's background image at the band's right, in
-  the type's colour.
-- A two-line label: the name, then the type's name in uppercase. The label runs from 8px past the
-  icon to 10px short of the right edge (`TEXT_LEFT`, `TEXT_RIGHT`), never over the icon: its
-  room is the node's own (`text-max-width` from the node's width), and a label longer than the room
-  wraps at its spaces, or anywhere when one of its words (a dotted name with no space in it) is
-  wider than the room (`labelWrap`, `text-overflow-wrap`). A node with `lines` lists them
-  under a rule, left-aligned, in monospace.
-- A fold node (`kind: "more"`) is the same box, dashed, with no band.
+- No icon and no type row: the band's colour (and the legend) says the type. The name is the bold
+  first row; the body (`lines`) is the rows under it, small, monospace and tight, all from 6px past
+  the band (`TEXT_LEFT`). Cytoscape draws one font per label, so a box's text is drawn as one SVG
+  image over its fill (stylesheet.ts `cardImage`); its cytoscape label is empty. A name or row
+  wider than the box's room is cut with an ellipsis (model.ts `ellipsise`); the default hover card
+  shows the whole name and every row cut short (`clipped`).
+- A fold node (`kind: "more"`) is the same box, dashed, with no band, its name centred and muted.
 - **The one exception: a junction is a diamond** (REQ-2239, amended 2026-11-11, A JUNCTION IS A
   DIAMOND). A junction table (an associative table that exists to connect others, REQ-1588) is
   drawn as Chen's relationship diamond, the form readers know from ER and UML. It keeps its band's
-  colour (grape: the border, and the fill a tint of it), its icon above its name and type, no body,
-  and its legs, drawn as every edge is. It is `NODE_TYPES.junction.shape`; the stylesheet's only diamond rule
+  colour (grape: the border, and the fill a tint of it), its name centred (no icon, no type row), no
+  body, and its legs, drawn as every edge is. It is `NODE_TYPES.junction.shape`; the stylesheet's only diamond rule
   is `node[shape = "diamond"]`, and no other type may take a shape. The ERD marks a junction from
-  erd-model's `erd-junction` tag. The diamond is 150 × 90, has no under-glow (cytoscape draws none
+  erd-model's `erd-junction` tag. The diamond is 140 × 56, has no under-glow (cytoscape draws none
   for a diamond), and its selection is its border at 2.5px with no halo. The legend draws its
   swatch as a small diamond.
 - A term's status: draft italic, deprecated at 55% opacity, retired at 35%.
@@ -108,7 +108,7 @@ titled the same way.
 - A plain canvas in the canvas token: no dot grid (maintainer, 2026-11-11).
 - How a graph opens, and Reset view, fit by the diagram's drawn extent, below the legend
   (`fitClear`). The whole diagram is fitted while the
-  zoom stays at 0.8 or more (`READABLE_ZOOM`); a bigger diagram is drawn at the readable zoom from
+  zoom stays at 0.6 or more (`GRAPH_READABLE_ZOOM`; REQ-2239, amended 2026-11-28); a bigger diagram is drawn at the readable zoom from
   its top (and, wider than the canvas, its left) and scrolls: the wheel scrolls it down, Shift with
   the wheel or a trackpad's sideways swipe across (at its end the page scrolls); a pinch or the
   wheel with Ctrl or Cmd held zooms about the pointer.
@@ -166,6 +166,11 @@ titled the same way.
 - A filter (a view's matches): matches in accent, the rest dimmed to 15%.
 
 ## Layout presets
+
+Spacing is tight (REQ-2239, amended 2026-11-28): the flow preset's nodes 20px apart, its layers at
+least 72px (more where a line's label needs it, `layerGap`); the layered preset's 32px and 90px;
+lanes 44px apart, a lane's nodes 8px; a group's box 16px round its nodes (ELK keeps that room and 30px
+above for the title).
 
 - `layered`: ELK layered (`elkLayout.ts`, Provisa's adapter around elkjs, registered as
   `provisa-elk`), upward, groups laid out with their children; then nodes without edges

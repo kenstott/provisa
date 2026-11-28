@@ -72,7 +72,7 @@ describe("the flow preset", () => {
 // far enough apart that the widest label is clear of the nodes at both ends.
 describe("layerGap", () => {
   it("keeps the least gap when every label is short", () => {
-    expect(layerGap(["", "SUM"])).toBe(140);
+    expect(layerGap(["", "SUM"])).toBe(72);
   });
 
   it("widens to the widest label, with an arrowhead's room at each end", () => {

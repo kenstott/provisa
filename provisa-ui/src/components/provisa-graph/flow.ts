@@ -23,19 +23,19 @@ import { textWidth } from "./model";
 import { SIZE } from "./tokens";
 
 /** The space between two things packed under the laid-out part, and above them. */
-const PACK_GAP = 48;
+const PACK_GAP = 24;
 
 /** A group's ELK options: its nodes one column, in the view's order, with room for its title. */
 const GROUP_OPTIONS = {
-  "elk.padding": "[top=40,left=28,bottom=28,right=28]",
+  "elk.padding": "[top=30,left=16,bottom=16,right=16]",
   "elk.separateConnectedComponents": "false",
-  "elk.spacing.nodeNode": "10",
+  "elk.spacing.nodeNode": "6",
   "elk.layered.spacing.nodeNodeBetweenLayers": "40",
   "elk.layered.nodePlacement.strategy": "SIMPLE",
 };
 
 /** The least space between two layers, and the room an arrowhead takes at a line's end. */
-const LAYER_GAP = 140;
+const LAYER_GAP = 72;
 const ARROW_ROOM = 12;
 /** An edge label's text background padding (stylesheet ``text-background-padding``). */
 const LABEL_PAD = 2;
@@ -61,7 +61,7 @@ export function flowLayout(eles: unknown, gap: number) {
       "elk.hierarchyHandling": "INCLUDE_CHILDREN",
       // Room between layers for a line's label: lineage names each transform on its line.
       "elk.layered.spacing.nodeNodeBetweenLayers": String(gap),
-      "elk.spacing.nodeNode": "44",
+      "elk.spacing.nodeNode": "20",
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
       "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
       "elk.layered.crossingMinimization.hierarchicalSweepiness": "1",
@@ -168,7 +168,7 @@ export function packUnder(core: Core, ids: string[], aspectRatio: number): void 
 }
 
 /** The gap between two nodes of a group, as ELK spaces them (GROUP_OPTIONS). */
-const GROUP_NODE_GAP = 10;
+const GROUP_NODE_GAP = 6;
 
 /** Each group's fold node (``kind: "more"``: the nodes it stands for are not drawn) moved under the
  * group's other nodes: it has no line, so ELK may put it anywhere in the group's column. */

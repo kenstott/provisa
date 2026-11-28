@@ -172,9 +172,10 @@ interface TipAt {
   y: number;
   width: number;
   height: number;
-  /** What the default card says: the thing's name and description. */
+  /** What the default card says: the thing's name and description, and its rows cut short. */
   name: string;
   description: string;
+  clipped: string[];
 }
 
 /** The nodes and lines drawn, on the page: what a card should stay off. */
@@ -257,7 +258,7 @@ export function ProvisaGraph({
 
   const detail = options?.detail ?? "all";
   const typeName = useCallback((type: NodeType) => t(`provisaGraph.type.${type}`), [t]);
-  const elements = useMemo(() => graphElements(graph, typeName, detail), [graph, typeName, detail]);
+  const elements = useMemo(() => graphElements(graph, detail), [graph, detail]);
 
   // Read when an event comes, so the drawing is not rebuilt when a handler changes.
   const latest = useRef({
@@ -475,6 +476,10 @@ export function ProvisaGraph({
       return {
         name: String(data("name") ?? data("label") ?? ""),
         description: String(data("description") ?? ""),
+        // A box's rows cut short to its width, whole (REQ-2239, THE SHARED NODE STYLE IS COMPACT).
+        clipped: ((data("clipped") as string[] | undefined) ?? []).filter(
+          (r) => r !== data("name"),
+        ),
       };
     };
     const enter = (h: GraphHover) => (evt: EventObject) => {
@@ -810,6 +815,13 @@ export function ProvisaGraph({
     <>
       <b>{tip.name}</b>
       {tip.description && <div className="pg-tip-body">{tip.description}</div>}
+      {tip.clipped.length > 0 && (
+        <div className="pg-tip-body pg-tip-rows">
+          {tip.clipped.map((r) => (
+            <div key={r}>{r}</div>
+          ))}
+        </div>
+      )}
     </>
   ) : null;
 

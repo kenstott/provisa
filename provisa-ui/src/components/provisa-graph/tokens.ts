@@ -64,22 +64,35 @@ export function graphTokens(isDark: boolean): GraphTokens {
   return isDark ? DARK : LIGHT;
 }
 
-/** Sizes, in model pixels (SPEC.md). */
+/** Sizes, in model pixels (SPEC.md). The node style is compact (REQ-2239, amended 2026-11-28): a
+ * node spends its space on its text, not on decoration. */
 export const SIZE = {
-  nodeWidth: 180,
-  nodeHeight: 44,
-  band: 6,
+  /** The least width of a box; it grows with its text to NODE_MAX_WIDTH (model.ts). */
+  nodeWidth: 64,
+  /** A box with its name only. */
+  nodeHeight: 24,
+  /** The type's colour: a thin edge on the box's leading side. */
+  band: 3,
   radius: 4,
-  icon: 16,
+  /** The text's inset from the band and the right edge, and from the top and bottom. */
+  padX: 6,
+  padY: 5,
+  /** The name: bold, one row. */
   name: 11,
-  sub: 9,
-  line: 13,
+  nameStep: 14,
+  /** The body's rows: monospace, small and tight. */
+  lineFont: 9.5,
+  lineStep: 11,
+  /** Between the name and the body. */
+  bodyGap: 2,
   edge: 1,
   edgeLabel: 9,
   groupLabel: 10,
   /** A diamond (the junction, the one exception to the node shape): wide enough for its name. */
-  diamondWidth: 150,
-  diamondHeight: 90,
+  diamondWidth: 140,
+  diamondHeight: 56,
+  /** The room a diamond's name keeps from its side corners, each side. */
+  diamondInset: 18,
 } as const;
 
 /** What a node is, as the graph draws it: the band's colour, the icon, the type's name (an i18n

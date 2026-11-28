@@ -22,10 +22,10 @@ export const ERD_ELK_LAYOUT = {
     algorithm: "layered",
     "elk.direction": "UP",
     "elk.hierarchyHandling": "INCLUDE_CHILDREN",
-    "elk.layered.spacing.nodeNodeBetweenLayers": "150",
-    "elk.spacing.nodeNode": "60",
+    "elk.layered.spacing.nodeNodeBetweenLayers": "90",
+    "elk.spacing.nodeNode": "32",
     "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
     "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
-    "elk.padding": "[top=40,left=20,bottom=20,right=20]",
+    "elk.padding": "[top=30,left=16,bottom=16,right=16]",
   },
 } as CyLayoutOptions;

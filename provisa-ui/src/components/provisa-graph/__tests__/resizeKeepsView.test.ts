@@ -17,7 +17,7 @@
 import { describe, expect, it } from "vitest";
 import type { CyInstance } from "../../graph/cytoscape-types";
 import {
-  READABLE_ZOOM,
+  GRAPH_READABLE_ZOOM,
   fitClear,
   fitWhole,
   followResize,
@@ -103,7 +103,7 @@ describe("a resize keeps the view's mode (REQ-2277)", () => {
     expect(g.resize(900, 800)).toBe("whole");
     expect(inside(g.whole(), 900, 800, PAD)).toBe(true);
     // It is not drawn at the readable zoom from its top left, as main drew it.
-    expect(g.cy.zoom()).toBeLessThan(READABLE_ZOOM);
+    expect(g.cy.zoom()).toBeLessThan(GRAPH_READABLE_ZOOM);
   });
 
   it("opened showing the whole diagram, a narrower canvas still shows it whole", () => {

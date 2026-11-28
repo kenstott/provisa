@@ -32,7 +32,15 @@ import {
   placedDiagram,
 } from "../../graph3d/__tests__/crossingFixtures";
 import type { GraphData } from "../../graph3d/graphModel";
-import { NODE_MAX_WIDTH, TEXT_LEFT, TEXT_RIGHT, graphElements, textWidth } from "../model";
+import {
+  NODE_MAX_WIDTH,
+  TEXT_LEFT,
+  TEXT_RIGHT,
+  graphElements,
+  nameWidth,
+  rowWidth,
+  textWidth,
+} from "../model";
 import { graphStylesheet } from "../stylesheet";
 import { SIZE, graphTokens } from "../tokens";
 import { GLOSSARY_REL_TYPES } from "../../../api/glossary";
@@ -69,7 +77,7 @@ async function laidOut(data: GraphData) {
     lanes: LANES.map((l) => ({ id: l, title: l })),
     beside: "term",
   };
-  const elements = graphElements(graph, (t) => t);
+  const elements = graphElements(graph);
   const cy = cytoscape({
     headless: true,
     styleEnabled: true,
@@ -795,23 +803,25 @@ describe("tables, products and terms align to the fixed column lane (REQ-2239, a
     const terms = Object.fromEntries(
       d.graph.nodes.filter((n) => d.lane.get(n.id) === "term").map((n) => [n.id, at(n.id).y]),
     );
-    // As the even spread placed them (the column lane is the tallest, so its places are unchanged).
+    // As the even spread placed them (the column lane is the tallest, so its places are unchanged):
+    // each term on its row, the rows a one-row node and a node gap apart.
+    const row = (r: number) => r * (SIZE.nodeHeight + NODE_GAP) + SIZE.nodeHeight / 2;
     expect(terms).toEqual({
-      "term:pet": 834,
-      "term:dog": 892,
-      "term:cat": 950,
-      "term:owner": 1820,
-      "term:employee": 1124,
-      "term:veterinarian": 138,
-      "term:shelter": 1240,
-      "term:visit": 22,
-      "term:vaccination": 428,
-      "term:diagnosis": 370,
-      "term:medication": 486,
-      "term:adoption": 1704,
-      "term:assignment": 1298,
-      "term:name": 1414,
-      "term:contact": 2110,
+      "term:pet": row(14),
+      "term:dog": row(15),
+      "term:cat": row(16),
+      "term:owner": row(31),
+      "term:employee": row(19),
+      "term:veterinarian": row(2),
+      "term:shelter": row(21),
+      "term:visit": row(0),
+      "term:vaccination": row(7),
+      "term:diagnosis": row(6),
+      "term:medication": row(8),
+      "term:adoption": row(29),
+      "term:assignment": row(22),
+      "term:name": row(24),
+      "term:contact": row(36),
     });
   });
 
@@ -843,7 +853,7 @@ describe("a node's label", () => {
         type: "column" as const,
         name: "shelter.assignments_by_employee.employee_assignment_history_id",
       },
-      // A fold node's sentence wraps at its spaces, never inside a word ("thi s view").
+      // A fold node: its sentence centred, one row.
       {
         id: "more:t",
         type: "more" as const,
@@ -857,7 +867,7 @@ describe("a node's label", () => {
     cytoscape({
       headless: true,
       styleEnabled: true,
-      elements: graphElements(spec, (t) => t) as unknown as Parameters<
+      elements: graphElements(spec) as unknown as Parameters<
         typeof cytoscape
       >[0]["elements"],
       style: graphStylesheet(graphTokens(false)) as unknown as Parameters<
@@ -869,49 +879,44 @@ describe("a node's label", () => {
     const cy = drawn();
     const w = cy.getElementById("t:long").data("w") as number;
     cy.destroy();
-    expect(w).toBeGreaterThanOrEqual(TEXT_LEFT + textWidth(LONG, SIZE.name) + TEXT_RIGHT);
+    expect(w).toBeGreaterThanOrEqual(TEXT_LEFT + nameWidth(LONG) + TEXT_RIGHT);
     expect(w).toBeGreaterThan(SIZE.nodeWidth);
   });
 
-  it("starts right of the icon and ends inside the node, however wide its text runs", () => {
+  it("is drawn inside its node: a box's as its card from past the band, the rest centred", () => {
     const cy = drawn();
     cy.nodes().forEach((n) => {
       const w = n.data("w") as number;
-      const room = parseFloat(n.style("text-max-width") as string);
-      const shift = parseFloat(n.style("text-margin-x") as string);
-      const iconRight = -w / 2 + parseFloat(n.style("background-position-x") as string) + SIZE.icon;
-      // The label is centred at the node's centre plus its shift and is at most its room wide:
-      // it wraps at its spaces, or anywhere when a word of it is wider than the room.
-      expect(n.style("text-halign")).toBe("center");
-      const words = String(n.data("label")).split(/\s+/);
-      const wider = words.some((x) => textWidth(x, SIZE.name) > room);
-      expect(n.style("text-overflow-wrap"), n.id()).toBe(wider ? "anywhere" : "whitespace");
-      expect(shift + room / 2, `${n.id()} label's right edge`).toBeLessThanOrEqual(w / 2);
-      expect(shift - room / 2, `${n.id()} label's left edge`).toBeGreaterThanOrEqual(-w / 2);
-      // A fold node has no icon.
-      if (n.data("kind") === "node")
-        expect(shift - room / 2, `${n.id()} label's left edge`).toBeGreaterThan(iconRight);
+      const room = n.data("textW") as number;
+      // Every row fits its room (model.ts cut it), and the room is inside the box past the band.
+      for (const row of String(n.data("label")).split("\n"))
+        expect(Math.min(nameWidth(row), rowWidth(row)), `${n.id()} ${row}`).toBeLessThanOrEqual(room);
+      expect(TEXT_LEFT + room + TEXT_RIGHT, n.id()).toBeLessThanOrEqual(w);
+      expect(n.style("text-wrap"), n.id()).toBe("none");
+      if (n.data("kind") === "node") {
+        // A box draws no cytoscape label: its text is its card.
+        expect(n.data("caption"), n.id()).toBe("");
+        expect(String(n.style("background-image")), n.id()).toContain("data:image/svg+xml");
+      } else {
+        expect(n.data("caption"), n.id()).toBe(n.data("title"));
+        expect(n.style("text-halign"), n.id()).toBe("center");
+      }
     });
     cy.destroy();
   });
 
-  it("wraps a sentence at its spaces and a name with none wherever it must", () => {
-    const cy = drawn();
-    const more = cy.getElementById("more:t").style("text-overflow-wrap");
-    const long = cy.getElementById("c:col").style("text-overflow-wrap");
-    cy.destroy();
-    expect(more).toBe("whitespace");
-    expect(long).toBe("anywhere");
-  });
-
-  it("wraps a name past the widest node, and the node grows in height for it", () => {
+  it("ellipsises a name past the widest node, keeping it whole for the card, and never grows", () => {
     const cy = drawn();
     const col = cy.getElementById("c:col");
     const w = col.data("w") as number;
     const h = col.data("h") as number;
+    const title = col.data("title") as string;
+    const clipped = col.data("clipped") as string[];
     cy.destroy();
     expect(w).toBe(NODE_MAX_WIDTH);
-    expect(h).toBeGreaterThan(SIZE.nodeHeight);
+    expect(h).toBe(SIZE.nodeHeight);
+    expect(title.endsWith("…")).toBe(true);
+    expect(clipped).toEqual(["shelter.assignments_by_employee.employee_assignment_history_id"]);
   });
 });
 

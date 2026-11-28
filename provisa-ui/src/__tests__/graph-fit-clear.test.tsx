@@ -13,7 +13,12 @@
 
 import { describe, it, expect } from "vitest";
 import type { CyInstance } from "../components/graph/cytoscape-types";
-import { READABLE_ZOOM, fitClear, fitWhole, scrollBy } from "../components/provisa-graph/viewport";
+import {
+  GRAPH_READABLE_ZOOM,
+  fitClear,
+  fitWhole,
+  scrollBy,
+} from "../components/provisa-graph/viewport";
 import { GraphControls } from "../components/provisa-graph/GraphControls";
 import { fireEvent, render, screen } from "../test-utils/render";
 
@@ -118,10 +123,25 @@ describe("fitClear on a diagram taller than its canvas", () => {
   it("keeps the labels readable and draws the diagram from its top", () => {
     const { cy, rendered } = stage(1200, 720, 0, TALL);
     fitClear(cy, 10);
-    expect(cy.zoom()).toBeGreaterThanOrEqual(READABLE_ZOOM);
+    expect(cy.zoom()).toBeGreaterThanOrEqual(GRAPH_READABLE_ZOOM);
     expect(rendered().y1).toBeCloseTo(10, 9);
     // Centred across.
     expect((rendered().x1 + rendered().x2) / 2).toBeCloseTo(600, 9);
+  });
+
+  it("opens fitted whole while the fitted zoom is 0.6 or more (REQ-2239, compact node style)", () => {
+    expect(GRAPH_READABLE_ZOOM).toBe(0.6);
+    // Fitted at 0.7: whole, centred.
+    const fits = stage(1200, 720, 0, { x1: 0, y1: 0, x2: 900, y2: 1000, w: 900, h: 1000 });
+    fitClear(fits.cy, 10);
+    expect(fits.cy.zoom()).toBeCloseTo(0.7, 9);
+    expect(fits.rendered().y1).toBeGreaterThanOrEqual(10 - 1e-9);
+    expect(fits.rendered().y2).toBeLessThanOrEqual(710 + 1e-9);
+    // Fitted at 0.35: held at 0.6, from its top.
+    const tall = stage(1200, 720, 0, { x1: 0, y1: 0, x2: 900, y2: 2000, w: 900, h: 2000 });
+    fitClear(tall.cy, 10);
+    expect(tall.cy.zoom()).toBeCloseTo(0.6, 9);
+    expect(tall.rendered().y1).toBeCloseTo(10, 9);
   });
 
   it("draws a diagram too wide to read at a fit from its left, at the readable zoom", () => {
@@ -129,7 +149,7 @@ describe("fitClear on a diagram taller than its canvas", () => {
     const wideTall: BB = { x1: 0, y1: 0, x2: 4000, y2: 6000, w: 4000, h: 6000 };
     const { cy, rendered } = stage(1200, 720, 0, wideTall);
     fitClear(cy, 10);
-    expect(cy.zoom()).toBeCloseTo(READABLE_ZOOM, 9);
+    expect(cy.zoom()).toBeCloseTo(GRAPH_READABLE_ZOOM, 9);
     expect(rendered().x1).toBeCloseTo(10, 9);
     expect(rendered().y1).toBeCloseTo(10, 9);
   });
@@ -138,7 +158,7 @@ describe("fitClear on a diagram taller than its canvas", () => {
     const wide: BB = { x1: 0, y1: 0, x2: 3000, y2: 400, w: 3000, h: 400 };
     const { cy, rendered } = stage(1200, 720, 0, wide);
     fitClear(cy, 10);
-    expect(cy.zoom()).toBeCloseTo(READABLE_ZOOM, 9);
+    expect(cy.zoom()).toBeCloseTo(GRAPH_READABLE_ZOOM, 9);
     expect(rendered().x1).toBeCloseTo(10, 9);
     expect(scrollBy(cy, 0, 300)).toBe(false);
     expect(scrollBy(cy, 500, 0)).toBe(true);
@@ -183,7 +203,7 @@ describe("fitWhole: the fit control fits the entire image", () => {
   it("fits a diagram too big for the canvas at the readable zoom whole, below that zoom", () => {
     const { cy, rendered } = stage(1200, 720, 0, HUGE);
     fitWhole(cy, 10);
-    expect(cy.zoom()).toBeLessThan(READABLE_ZOOM);
+    expect(cy.zoom()).toBeLessThan(GRAPH_READABLE_ZOOM);
     expectInside(rendered(), 1200, 720, 10, 10);
     // Height-bound: it fills the canvas's height, centred across.
     expect(rendered().h).toBeCloseTo(700, 9);
@@ -194,7 +214,7 @@ describe("fitWhole: the fit control fits the entire image", () => {
     const wide: BB = { x1: 0, y1: 0, x2: 3000, y2: 400, w: 3000, h: 400 };
     const { cy, rendered } = stage(1200, 720, 44, wide);
     fitWhole(cy, 10);
-    expect(cy.zoom()).toBeLessThan(READABLE_ZOOM);
+    expect(cy.zoom()).toBeLessThan(GRAPH_READABLE_ZOOM);
     expectInside(rendered(), 1200, 720, 44, 10);
     expect(rendered().w).toBeCloseTo(1180, 9);
     // Nothing runs past the canvas, so nothing scrolls.
@@ -215,7 +235,7 @@ describe("fitWhole: the fit control fits the entire image", () => {
   it("opening and Reset view (fitClear) still hold the readable floor on the same diagram", () => {
     const { cy } = stage(1200, 720, 0, HUGE);
     fitClear(cy, 24);
-    expect(cy.zoom()).toBeCloseTo(READABLE_ZOOM, 9);
+    expect(cy.zoom()).toBeCloseTo(GRAPH_READABLE_ZOOM, 9);
   });
 
   it("the fit control leaves the whole drawn extent inside the canvas", () => {
@@ -233,7 +253,7 @@ describe("fitWhole: the fit control fits the entire image", () => {
       />,
     );
     fireEvent.click(screen.getByTestId("g-fit-all"));
-    expect(cy.zoom()).toBeLessThan(READABLE_ZOOM);
+    expect(cy.zoom()).toBeLessThan(GRAPH_READABLE_ZOOM);
     expectInside(rendered(), 1200, 720, 10, 10);
   });
 });

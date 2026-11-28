@@ -250,7 +250,7 @@ export function placeIsolatedGrid(
 // Uses Math.ceil so tiny gaps always produce at least one grid step of movement.
 export function enforceEdgeGaps(cy: CyInstance, gridSnap: number): void {
   type BB = { x1: number; x2: number; y1: number; y2: number };
-  const MIN_LABEL_GAP = 60;
+  const MIN_LABEL_GAP = 44;
   const g = gridSnap > 0 ? gridSnap : 1;
   cy.edges(".pg-edge").forEach((edge) => {
     const s = cy.getElementById(edge.data("source") as string) as unknown as {
@@ -313,7 +313,7 @@ export function enforceEdgeGaps(cy: CyInstance, gridSnap: number): void {
 export function separateTables(cy: CyInstance, skip: Set<string>, gridSnap: number): void {
   type BB = { x1: number; x2: number; y1: number; y2: number };
   type Table = { node: { position(): Pt; position(p: Pt): void }; bb: BB };
-  const TABLE_GAP = 20;
+  const TABLE_GAP = 14;
   const g = gridSnap > 0 ? gridSnap : 1;
   const byDomain = new Map<string, Table[]>();
   cy.nodes(".pg-node").forEach((n) => {

@@ -30,19 +30,24 @@ function legendBand(cy: CyInstance): number {
   return Math.max(0, legend.getBoundingClientRect().bottom - box.getBoundingClientRect().top);
 }
 
-/** The least zoom a fit takes: below it a label is too small to read, so a diagram too big for
- * its canvas at this zoom is drawn at it from its top left and scrolls (down, and across). */
+/** The least zoom a diagram (a Mermaid one) opens at: below it a label is too small to read. */
 export const READABLE_ZOOM = 0.8;
+
+/** The least zoom a graph's opening fit takes (REQ-2239, amended 2026-11-28: a graph opens fitted
+ * to its panel when the fitted zoom stays readable): below it a compact node's text is too small to
+ * read, so a graph too big for its canvas at this zoom is drawn at it from its top left and
+ * scrolls (down, and across). */
+export const GRAPH_READABLE_ZOOM = 0.6;
 
 /** How a graph opens and Reset view: fit the diagram by its drawn extent, `padding` round it,
  * below the legend (which sits over the canvas's top right: a lane's or a group's title is never
- * under it). The whole diagram is fitted while that keeps the zoom at READABLE_ZOOM or more; past
- * that it is drawn at the readable zoom from its top (and, wider than the canvas, its left) and
+ * under it). The whole diagram is fitted while that keeps the zoom at
+ * GRAPH_READABLE_ZOOM or more; past that it is drawn at the readable zoom from its top (and, wider than the canvas, its left) and
  * scrolled (scrollBy). */
 export function fitClear(cy: CyInstance, padding: number = FIT_PADDING): void {
   // A fit that shows the whole diagram is a fit of the whole, which a resize keeps; one held at
   // the readable zoom is the opening view, which a resize opens again.
-  const whole = fitBelowLegend(cy, padding, READABLE_ZOOM);
+  const whole = fitBelowLegend(cy, padding, GRAPH_READABLE_ZOOM);
   modes.set(cy, whole ? { kind: "whole", padding } : { kind: "opening" });
 }
 
