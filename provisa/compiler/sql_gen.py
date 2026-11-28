@@ -71,6 +71,7 @@ from provisa.compiler.sql_where import (
     _extract_value,
     _has_joins,
     _below_takes_lateral_args,
+    _grouped_read_refuses,
     _has_lateral_force_args,
     _joins_row_level_to_one,
 )
@@ -172,7 +173,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             _below = _below_takes_lateral_args(sel, ctx, join_meta.target.type_name)
             _use_agg = (
                 not flat
-                and not _has_lateral_force_args(sel)
+                and not _grouped_read_refuses(sel)
                 and not _below
                 and not _joins_row_level_to_one(sel, join_meta, ctx)
             )
@@ -240,6 +241,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     sources,
                     variables,
                     json_text=_json_text,
+                    collector=collector,
                 )
                 join_clauses.append(read_join)
                 select_parts.append(f"{json_expr} AS {_q(_rel_key)}")

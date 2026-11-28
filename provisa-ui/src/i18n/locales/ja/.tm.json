@@ -3352,6 +3352,7 @@
   "ja/graph3d.json::graph3d.ontologyView": "Ontology view",
   "ja/graph3d.json::graph3d.openAsQuery": "Open as query",
   "ja/graph3d.json::graph3d.openAsQueryCompiling": "Compiling the query…",
+  "ja/graph3d.json::graph3d.openAsQueryCypherOnly": "All hops is a Cypher query: open it as Cypher.",
   "ja/graph3d.json::graph3d.openAsQueryFocused": "The search or focus neighbourhood isn’t expressible as one query yet.",
   "ja/graph3d.json::graph3d.openAsQueryNoCypher": "This query has no Cypher form.",
   "ja/graph3d.json::graph3d.openAsQueryNoSparql": "This query has no SPARQL form.",

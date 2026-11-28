@@ -102,6 +102,7 @@
     "openAsQueryFocused": "खोज या फ़ोकस का पड़ोस अभी एक क्वेरी के रूप में व्यक्त नहीं किया जा सकता।",
     "openAsQueryCompiling": "क्वेरी कंपाइल हो रही है…",
     "openAsQueryNoCypher": "इस क्वेरी का कोई Cypher रूप नहीं है।",
+    "openAsQueryCypherOnly": "सभी हॉप एक Cypher क्वेरी है: इसे Cypher के रूप में खोलें।",
     "layersMenu": "परतें",
     "termsMenu": "शब्द",
     "menuAll": "सभी",

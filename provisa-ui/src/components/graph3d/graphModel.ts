@@ -334,8 +334,10 @@ export interface QueryScope {
    * drawn belongs to, whatever the layers. Absent: drawn in 3D. */
   lanes?: boolean;
   /** REQ-2174 (ONE ONTOLOGY GRAPH): the term or product (its node id) a snippet is read around,
-   * with its neighbourhood to ``depth`` hops; null, the whole ontology. */
-  focus: string | null;
+   * with its neighbourhood to ``depth`` hops; null, the whole ontology. (Amended 2026-11-26, A
+   * DRAWN GRAPH OPENS AS THE QUERY THAT DREW IT:) several focused at once are each read around,
+   * so the query states every focus the view draws (never an empty list: none is null). */
+  focus: string | readonly string[] | null;
   /** Hops from a search's matches or the focus that are read. */
   depth: number;
   /** REQ-2174 (ONE GRAPH, RULES PER PRESET): read by the Product map's rules -- the data products

@@ -8,15 +8,16 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174 (ONE ONTOLOGY GRAPH; EVERY OTHER GRAPH IS A SNIPPET OF IT): a term's snippet is read hop
-// by hop, each hop once -- the terms its frontier's edges reach that no hop has read, by their
-// ids -- so the read grows with what is drawn, not some 2.5 times a hop (R509-C2's residual: nested
-// edgesOut and edgesIn at each level, each path's terms read again with their refs). Answered by a
+// REQ-2174 (ONE ONTOLOGY GRAPH; EVERY OTHER GRAPH IS A SNIPPET OF IT; amended 2026-11-26, A CONNECTED
+// ONTOLOGY GRAPH IS ONE QUERY): a term's snippet is one query -- its hops nested under one root
+// field, both ways, each end term read whole to the hop count chosen -- read in one round trip and
+// opened as that same text; a term met on two paths is merged by id. All hops is walked a hop at a
+// time from its root, each term once, and opens as one Cypher variable-length query. Answered by a
 // server holding a small term graph with a cycle, a cross link and a hidden term, against the meta
 // model's real schema (tests/fixtures/graphql_golden/meta_schema.json).
 
 import { describe, expect, it, vi } from "vitest";
-import { ontologyGraph } from "../ontologyData";
+import { ontologyGraph, type TermRow } from "../ontologyData";
 import { readOntology } from "../ontologyRead";
 import { loadOntology } from "../useOntology";
 import { snippetLayers, termGraph, termPreset } from "../ontologyPresets";
@@ -135,39 +136,39 @@ const AT_DEPTH_3 = {
     "term_edge:term:7>term:1:KIND_OF",
   ].sort(),
 };
-// The nested read's size against this graph: its query and its answer.
-const NESTED = { query: 19_553, answer: 26_720 };
+/** The one GraphQL query a read opens as. */
+const graphqlOf = (opened: Awaited<ReturnType<typeof readOntology>>["opened"]): string => {
+  if (opened?.language !== "graphql") throw new Error("not opened as GraphQL");
+  return opened.query;
+};
 
-describe("a term's snippet, read a hop at a time", () => {
+describe("a term's snippet, read in one query", () => {
   it("draws every term within three term steps, each with its grounding", async () => {
     expect((await drawn(3)).graph).toEqual(AT_DEPTH_3);
   });
 
-  it("reads each term once, each with its grounding, the last hop's too", async () => {
+  it("reads every term within three links, each with its grounding, the last hop's too", async () => {
     const { sent } = await drawn(3);
-    const answers = sent.map((s) => JSON.parse(s.answer) as { _terms: Row[] });
-    const read = answers.flatMap((a) => a._terms.map((t) => t.id as number));
-    // Every term within three links, each once: the root, then each hop's frontier.
-    expect(read.sort()).toEqual(GROUNDED);
-    const refsRead = answers.flatMap((a) => a._terms.filter((t) => t.refs).map((t) => t.id));
+    const [answer] = sent.map((s) => JSON.parse(s.answer) as { _terms: Row[] });
+    const read = answer._terms as unknown as TermRow[];
+    // Every term within three links, each once.
+    expect(read.map((t) => t.id).sort()).toEqual(GROUNDED);
     // A term drawn brings its grounding, whatever the hop it is reached at.
-    expect(refsRead.sort()).toEqual(GROUNDED);
+    expect(
+      read
+        .filter((t) => t.refs)
+        .map((t) => t.id)
+        .sort(),
+    ).toEqual(GROUNDED);
   });
 
-  it("sends one query a hop, each the same size whatever the depth", async () => {
-    const three = await drawn(3);
-    const four = await drawn(4);
-    expect(three.sent).toHaveLength(4);
-    expect(three.queries).toEqual(three.sent.map((s) => s.query));
-    // A hop's query names its frontier's ids, so it is no bigger a hop further out.
-    const widest = Math.max(...three.sent.map((s) => s.query.length));
-    expect(widest).toBeLessThan(3000);
-    for (const s of four.sent) expect(s.query.length).toBeLessThan(3000);
-    const total = three.sent.reduce((n, s) => n + s.query.length, 0);
-    expect(total).toBeLessThan(NESTED.query / 2);
-    // Each term's answer once: the root's, then each hop's frontier.
-    const answered = three.sent.reduce((n, s) => n + s.answer.length, 0);
-    expect(answered).toBeLessThan(NESTED.answer / 2);
+  it("sends one query of one root field, whatever the depth", async () => {
+    for (const depth of [1, 2, 3, 4]) {
+      const { sent, queries } = await drawn(depth);
+      expect(sent).toHaveLength(1);
+      expect(queries).toEqual([sent[0].query]);
+      expect(sent[0].query.split("\n").filter((l) => /^ {2}\w/.test(l))).toHaveLength(1);
+    }
   });
 
   it("stops when a hop reaches nothing new", async () => {
@@ -196,27 +197,29 @@ const productSnippet = (depth: number): QueryScope => ({
   focus: "p:p1",
 });
 
-describe("a snippet opened as a query: every hop the snippet drew, in one query", () => {
-  for (const depth of [1, 2, 3, Infinity])
+describe("a snippet opened as a query: the one query that drew it", () => {
+  for (const depth of [1, 2, 3, 4])
     it(`a term's snippet at depth ${depth}`, async () => {
       const s = snippet(depth);
       const got = await readOntology(reader(), s, server(WORLD).read);
       const graph = sorted(ontologyGraph(got.rows, s));
-      const opened = got.opened as string;
+      const opened = graphqlOf(got.opened);
       expect(opened.startsWith("query Ontology {")).toBe(true);
-      // It names every term drawn and nothing past them; run, it draws what the snippet drew.
-      expect(namedTerms(opened)).toEqual(drawnTerms(graph));
+      // The text it read; run, it draws what the snippet drew.
+      expect(got.queries).toEqual([opened]);
+      expect(namedTerms(opened)).toEqual([7]);
       expect(await ran(WORLD, opened, s)).toEqual(graph);
-      // Each hop's read once, not a level nested under each path: no bigger than the reads sent.
-      const sent = got.queries.reduce((n, q) => n + q.length, 0);
-      expect(opened.length).toBeLessThan(sent);
-      expect(opened.length).toBeLessThan(NESTED.query / 2);
     });
+
+  it("a term's snippet at All opens as the Cypher walk from its root's terms", async () => {
+    const got = await readOntology(reader(), snippet(Infinity), server(WORLD).read);
+    expect(got.opened).toEqual({ language: "cypher", roots: [7] });
+  });
 
   it("draws at depth 3 every term within three steps with its grounding", async () => {
     const s = snippet(3);
     const got = await readOntology(reader(), s, server(WORLD).read);
-    expect(await ran(WORLD, got.opened as string, s)).toEqual(AT_DEPTH_3);
+    expect(await ran(WORLD, graphqlOf(got.opened), s)).toEqual(AT_DEPTH_3);
   });
 
   it("a term's expanded graph (termGraph) opens as what it drew", async () => {
@@ -228,38 +231,49 @@ describe("a snippet opened as a query: every hop the snippet drew, in one query"
     };
     const got = await readOntology(reader(), s, server(WORLD).read);
     const graph = sorted(ontologyGraph(got.rows, s));
-    expect(got.queries.length).toBeGreaterThan(1);
-    expect(namedTerms(got.opened as string)).toEqual(drawnTerms(graph));
-    expect(await ran(WORLD, got.opened as string, s)).toEqual(graph);
+    expect(got.queries).toHaveLength(1);
+    expect(drawnTerms(graph)).toEqual([1, 2, 7]);
+    expect(await ran(WORLD, graphqlOf(got.opened), s)).toEqual(graph);
   });
 
   // p1 holds term 1's table: 1 is its own term; 7, 2 and 3 a step off; 6 and 4 two; 5 three.
-  const PRODUCT_HOPS: [number, number][] = [
-    [1, 1],
-    [2, 2],
-    [3, 3],
-    [4, 3],
-    [Infinity, 3],
+  const PRODUCT_TERMS: [number, number[]][] = [
+    [1, [1, 2, 3, 7]],
+    [2, [1, 2, 3, 4, 6, 7]],
+    [3, [1, 2, 3, 4, 5, 6, 7]],
+    [4, [1, 2, 3, 4, 5, 6, 7]],
   ];
-  for (const [depth, hops] of PRODUCT_HOPS)
+  for (const [depth, terms] of PRODUCT_TERMS)
     it(`a product's snippet at depth ${depth}`, async () => {
       const s = productSnippet(depth);
       const got = await readOntology(reader(), s, server(WORLD).read);
       const graph = sorted(ontologyGraph(got.rows, s));
       expect(graph.nodes).toContain("p:p1");
-      // A product's own terms are its root, at no hop; each hop is a step across the links.
-      expect(got.queries).toHaveLength(1 + hops);
-      expect(await ran(WORLD, got.opened as string, s)).toEqual(graph);
+      // A product's own terms are its seed, at no hop; each hop a step across the links.
+      expect(got.queries).toHaveLength(1);
+      expect(drawnTerms(graph)).toEqual(terms);
+      expect(await ran(WORLD, graphqlOf(got.opened), s)).toEqual(graph);
     });
+
+  it("a product's snippet at All walks a hop at a time, and opens as Cypher from its terms", async () => {
+    const got = await readOntology(reader(), productSnippet(Infinity), server(WORLD).read);
+    // The root, then three hops: 5 is three steps off.
+    expect(got.queries).toHaveLength(4);
+    expect(got.opened).toEqual({ language: "cypher", roots: [1] });
+  });
 
   it("is what the view hands Open as query", async () => {
     wire.reader = reader;
-    wire.read = server(WORLD).read;
     const s = snippet(3);
+    const srv = server(WORLD);
+    wire.read = srv.read;
     const loaded = await loadOntology("analyst", s);
     if (loaded === null || loaded.over !== undefined) throw new Error("not read");
+    expect(loaded.language).toBe("graphql");
     expect(await ran(WORLD, loaded.query, s)).toEqual(sorted(loaded.data));
-    expect(namedTerms(loaded.query)).toEqual(GROUNDED);
+    // The count, then the one read it opens as.
+    expect(srv.sent.map((x) => x.query)).toEqual([srv.sent[0].query, loaded.query]);
+    expect(drawnTerms(sorted(loaded.data))).toEqual(GROUNDED);
   });
 });
 
@@ -384,14 +398,24 @@ describe("a hop is a step between terms", () => {
       }
     });
 
-  for (const depth of [1, 2, 3, Infinity])
-    it(`opens as a query of what it drew at ${depth}`, async () => {
+  for (const depth of [1, 2, 3])
+    it(`opens as the query that drew it at ${depth}`, async () => {
       for (const s of [termScope(depth), productScope(depth)]) {
         const { got, graph } = await chainRead(s);
-        expect(await ran(CHAIN, got.opened as string, s)).toEqual(sorted(graph));
+        expect(got.queries).toEqual([graphqlOf(got.opened)]);
+        expect(await ran(CHAIN, graphqlOf(got.opened), s)).toEqual(sorted(graph));
       }
-      // A term's names every term it drew; a product's root names the product, not its terms.
-      const { got, graph } = await chainRead(termScope(depth));
-      expect(namedTerms(got.opened as string)).toEqual(drawnTerms(sorted(graph)));
     });
+
+  it("opens as the Cypher walk from its root's terms at All", async () => {
+    expect((await chainRead(termScope(Infinity))).got.opened).toEqual({
+      language: "cypher",
+      roots: [TEST3],
+    });
+    // Pet Health's own terms: breed name and breed code.
+    expect((await chainRead(productScope(Infinity))).got.opened).toEqual({
+      language: "cypher",
+      roots: [BREED_NAME, BREED_CODE],
+    });
+  });
 });

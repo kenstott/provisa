@@ -47,6 +47,7 @@ from provisa.compiler.sql_where import (
     _extract_non_negative_int,
     _field_args,
     _below_takes_lateral_args,
+    _grouped_read_refuses,
     _has_lateral_force_args,
     _joins_row_level_to_one,
     JunctionHop,
@@ -177,6 +178,8 @@ def _build_rel_json_kv(
     joins: list[str],
     json_text: set[str] | None = None,
     key_prefix: str = "",
+    *,
+    collector: ParamCollector,
 ) -> tuple[list[str], int]:
     """Build KEY/VALUE pairs for json_object(KEY k VALUE v, ...) for a relationship.
 
@@ -223,6 +226,7 @@ def _build_rel_json_kv(
                 variables,
                 json_text=json_text,
                 key_prefix=f"{key_prefix}{key}.",
+                collector=collector,
             )
             joins.append(sub_join)
             if json_text is not None:
@@ -285,6 +289,8 @@ def rel_read(
     variables: dict | None,
     json_text: set[str] | None = None,
     key_prefix: str = "",
+    *,
+    collector: ParamCollector,
 ) -> tuple[str, str, int]:
     """A relationship field as one grouped read of its target, joined back by key: every engine
     reads it so, none correlates a subquery with the outer row (#362).
@@ -313,6 +319,27 @@ def rel_read(
         keys = list(hop.source_keys)
     else:
         keys = [(tgt_expr, src_expr)]
+    # REQ-2174: the field's where keeps the target's rows the read groups, as the lateral join
+    # applied it; the target's columns are read under its alias (beside the junction and the
+    # reads nested in it), and a relationship's condition is an EXISTS correlated with them.
+    kept = ""
+    args = _field_args(sel, variables)
+    if "where" in args:
+        relationships = RelationshipConditions(
+            ctx, join_meta.target.type_name, use_catalog, sources
+        )
+        related = where_names_relationship(args["where"], ctx, join_meta.target.type_name)
+        where_sql = _compile_where(
+            args["where"],
+            collector,
+            target_alias,
+            None,
+            join_meta.target.table_id,
+            ctx.exposed_to_physical,
+            relationships if related else None,
+            ctx.aggregate_columns,
+        )
+        kept = f" WHERE {where_sql}"
     inner_joins: list[str] = []
     kv_pairs, alias_counter = _build_rel_json_kv(
         sel.selection_set.selections,
@@ -327,9 +354,10 @@ def rel_read(
         inner_joins,
         json_text=json_text,
         key_prefix=key_prefix,
+        collector=collector,
     )
     jbo = f"json_object({', '.join(kv_pairs)})"
-    rows_from = " ".join([target_from, *inner_joins])
+    rows_from = " ".join([target_from, *inner_joins]) + kept
     key_names = [_q(f"{READ_KEY}{i}") for i in range(len(keys))]
     keyed = ", ".join(f"{inner} AS {name}" for (inner, _), name in zip(keys, key_names))
     partition = ", ".join(inner for inner, _ in keys)
@@ -459,7 +487,7 @@ def _collect_nested_columns(
             _below = _below_takes_lateral_args(nested_sel, ctx, nested_join_meta.target.type_name)
             _use_agg = (
                 not flat
-                and not _has_lateral_force_args(nested_sel)
+                and not _grouped_read_refuses(nested_sel)
                 and not _below
                 and not _joins_row_level_to_one(nested_sel, nested_join_meta, ctx)
             )
@@ -505,6 +533,7 @@ def _collect_nested_columns(
                     sources,
                     variables,
                     json_text=_json_text,
+                    collector=collector,
                 )
                 join_clauses.append(read_join)
                 json_alias = f"{nesting_path}.{nested_key}".replace(".", "__")

@@ -460,9 +460,10 @@ def junction_hop(  # REQ-1586
 
 class RelationshipConditions:  # REQ-2136
     """A where's relationship conditions, for a where over ``type_name``'s rows read as
-    ``alias``: each a row with a related row matching its own where, compiled to EXISTS over the
-    relationship's target. Every target read is added to the statement's ``sources``, and the
-    EXISTS body is governed as the rest of the statement is (stage2._govern_selects)."""
+    ``alias``: each a row with a related row matching its own where, compiled to the row's key IN
+    the keys of the relationship's target rows matching it (EXISTS through a junction). Every
+    target read is added to the statement's ``sources``, and the subquery is governed as the rest
+    of the statement is (stage2._govern_selects)."""
 
     def __init__(
         self,
@@ -516,7 +517,18 @@ class RelationshipConditions:  # REQ-2136
                 f"EXISTS (SELECT 1 FROM {hop.from_clause(target_from)}"
                 f" WHERE {hop.to_source} AND ({cond}))"
             )
-        return f"EXISTS (SELECT 1 FROM {target_from} WHERE {tgt} = {src} AND ({cond}))"
+        # The related rows' keys, not a correlated EXISTS: uncorrelated, PostgreSQL plans the
+        # subquery once and hashes it. A correlated EXISTS it plans twice (as EXISTS and as the
+        # hashed IN it may become), and each nested condition twice within each, so the ontology
+        # view's reach filter (REQ-2174), nested a hop per level, took most of a second to plan at
+        # four hops. The same truth as EXISTS: the null keys are left out (an equality never
+        # matches them) and a null source key is FALSE (COALESCE), so NOT keeps the row as NOT
+        # EXISTS does. ``cond`` is its conditions ANDed (_compile_where), so it needs no parens --
+        # each level of nesting is a level of the parser's recursion too.
+        return (
+            f"COALESCE({src} IN (SELECT {tgt} FROM {target_from}"
+            f" WHERE {tgt} IS NOT NULL AND {cond}), FALSE)"
+        )
 
 
 def _compile_where(
@@ -677,9 +689,9 @@ def _compile_order_by(
 
 
 def where_names_relationship(  # REQ-2136
-    where: object,
+    where: object,  # object-ok: truly-any payload — a where argument value of any shape, checked by isinstance inside
     ctx: CompilationContext,
-    type_name: str,  # object-ok: truly-any payload — a where argument value of any shape, checked by isinstance inside
+    type_name: str,
 ) -> bool:
     """Whether ``where`` (a where argument's value) states a relationship's condition, which
     reads the field's rows under an alias."""
@@ -705,12 +717,22 @@ def _has_joins(field_node: FieldNode, ctx: CompilationContext, type_name: str) -
     return False
 
 
-# Args that require LATERAL JOIN — limit is handled inside ARRAY_AGG subquery
+# Args a LATERAL join applies when a relationship field is joined row by row.
 _LATERAL_FORCE_ARGS = frozenset({"where", "order_by", "offset", "distinct_on"})
+# REQ-2174 (A CONNECTED ONTOLOGY GRAPH IS ONE QUERY): the args a grouped read (rel_read) cannot
+# apply, so a field taking one is joined row by row. A grouped read applies a limit and a where
+# itself: a where no longer joins the field and its ancestors as rows, whose sibling lists
+# multiplied one another's rows (a depth-4 ontology neighbourhood never answered).
+_GROUPED_READ_REFUSED_ARGS = frozenset({"order_by", "offset", "distinct_on"})
 
 
 def _has_lateral_force_args(field_node: FieldNode) -> bool:
     return any(arg.name.value in _LATERAL_FORCE_ARGS for arg in field_node.arguments)
+
+
+def _grouped_read_refuses(field_node: FieldNode) -> bool:
+    """Whether ``field_node`` takes an argument only a LATERAL join applies."""
+    return any(arg.name.value in _GROUPED_READ_REFUSED_ARGS for arg in field_node.arguments)
 
 
 def _below_takes_lateral_args(
@@ -718,7 +740,8 @@ def _below_takes_lateral_args(
 ) -> bool:
     """Whether a relationship field anywhere below ``field_node`` (whose rows are of
     ``type_name``) takes an argument only a LATERAL join applies: the grouped reads (rel_read)
-    apply a nested field's limit alone, so its ancestors are joined as the first level is (#285)."""
+    apply a nested field's limit and where alone, so its ancestors are joined as the first level
+    is (#285)."""
     if not field_node.selection_set:
         return False
     for sel in field_node.selection_set.selections:
@@ -727,7 +750,7 @@ def _below_takes_lateral_args(
         join_meta = ctx.joins.get((type_name, sel.name.value))
         if join_meta is None:
             continue
-        if _has_lateral_force_args(sel) or _below_takes_lateral_args(
+        if _grouped_read_refuses(sel) or _below_takes_lateral_args(
             sel, ctx, join_meta.target.type_name
         ):
             return True
