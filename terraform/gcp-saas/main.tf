@@ -623,15 +623,28 @@ resource "google_compute_instance" "coordinator" {
       # its first start, which prints the generated password once in the provisa container's log
       # before uvicorn reports startup complete. Copy that banner to this script's output, the
       # serial console; it is in no config file. A start that finds the account already there
-      # prints no banner, and nothing is copied.
+      # prints no banner, and nothing is copied. The log is read whole into a variable: under
+      # pipefail a grep -q that stops reading would fail the pipe on a long log. A platform that
+      # never reports startup complete fails this script, so the run is not recorded as done.
+      started=""
       for _ in $(seq 1 90); do
         cid=$(docker ps -q --filter label=com.docker.compose.service=provisa | head -1)
-        if [ -n "$cid" ] && docker logs "$cid" 2>&1 | grep -q "Application startup complete"; then
-          docker logs "$cid" 2>&1 | grep -A4 "PROVISA BREAK-GLASS ACCOUNT" || true
-          break
+        if [ -n "$cid" ]; then
+          provisa_log=$(docker logs "$cid" 2>&1)
+          if grep -q "Application startup complete" <<<"$provisa_log"; then
+            started=yes
+            break
+          fi
         fi
         sleep 10
       done
+      if [ -z "$started" ]; then
+        echo "the provisa container never reported startup complete" >&2
+        exit 1
+      fi
+      if grep -q "PROVISA BREAK-GLASS ACCOUNT" <<<"$provisa_log"; then
+        grep -A4 "PROVISA BREAK-GLASS ACCOUNT" <<<"$provisa_log"
+      fi
       echo "$startup_sha" > "$startup_done"
     SHELL
   })
