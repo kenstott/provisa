@@ -803,16 +803,12 @@ export function ProvisaGraph({
   ) : null;
 
   // A download is of the placed drawing: none while a layout runs.
+  // These views draw no hulls over the canvas.
+  const image = (cy: CyInstance) => ({ cy, bg: tokens.canvas, name: exportName, hulls: null });
   const exports = {
-    svg: () =>
-      placedRef.current &&
-      exportSvg(placedRef.current as unknown as CyInstance, tokens.canvas, exportName),
-    png: () =>
-      placedRef.current &&
-      exportPng(placedRef.current as unknown as CyInstance, tokens.canvas, exportName),
-    jpeg: () =>
-      placedRef.current &&
-      exportJpeg(placedRef.current as unknown as CyInstance, tokens.canvas, exportName),
+    svg: () => placedRef.current && exportSvg(image(placedRef.current as unknown as CyInstance)),
+    png: () => placedRef.current && exportPng(image(placedRef.current as unknown as CyInstance)),
+    jpeg: () => placedRef.current && exportJpeg(image(placedRef.current as unknown as CyInstance)),
     ...(exportData ? { json: () => exportJson(exportData(), exportName) } : {}),
   };
 

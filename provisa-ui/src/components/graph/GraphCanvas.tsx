@@ -91,7 +91,7 @@ export function GraphCanvas({
   onCyReady,
   clusterLevel,
   requestedView,
-  hullSvgRef,
+  exportName,
   note,
   highlight = null,
   onClearHighlight,
@@ -934,7 +934,6 @@ export function GraphCanvas({
       {note}
       <HullSvgOverlay
         hullCircles={hullCircles}
-        hullSvgRef={hullSvgRef}
         clusterLevelRef={clusterLevelRef}
         cyRef={cyRef}
         hullDragRef={hullDragRef}
@@ -943,6 +942,8 @@ export function GraphCanvas({
       <ResultGraphControls
         cyRef={cyRef}
         stageRef={stageRef}
+        canvas={graphTokens(isDark).canvas}
+        exportName={exportName}
         layoutMode={layoutMode}
         toggleLayout={toggleLayout}
         nudgeHeldRef={nudgeHeldRef}

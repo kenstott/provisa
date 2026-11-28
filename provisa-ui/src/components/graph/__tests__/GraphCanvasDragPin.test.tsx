@@ -88,6 +88,7 @@ const BASE_PROPS: Omit<CanvasProps, "nodes" | "edges"> = {
   showingParentsCircular: new Set(),
   onToggleParentsCircular: vi.fn(),
   clusterLevel: "none",
+  exportName: "cypher-graph",
 };
 
 beforeEach(() => {

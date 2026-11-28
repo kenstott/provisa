@@ -44,7 +44,7 @@ import type { Extension } from "@codemirror/state";
 import { createPortal } from "react-dom";
 import type { CyInstance } from "./cytoscape-types";
 import type { ClusterLevel } from "./graph-clusters";
-import { downloadBlob, compositeGraphDownload, downloadGraphSvg, toCSV } from "./graph-export";
+import { downloadBlob, toCSV } from "./graph-export";
 import { GraphCanvas, GraphCutNote } from "./GraphCanvas";
 import type { CanvasHighlight } from "./canvas/canvas-types";
 import { GraphStatsPanel } from "./GraphStatsModal";
@@ -269,7 +269,6 @@ export function GraphFrame({
   );
   const [tableColWidths, setTableColWidths] = useColumnWidths(frame.columns);
   const canvasCyRef = useRef<CyInstance | null>(null);
-  const canvasHullSvgRef = useRef<SVGSVGElement | null>(null);
   const inspWidthRef = useRef(inspectorWidth);
   inspWidthRef.current = inspectorWidth;
   const graphAreaHeightRef = useRef(graphAreaHeight);
@@ -672,7 +671,8 @@ export function GraphFrame({
               </ActionIcon>
             </Tip>
           )}
-          {frame.status === "done" && (frame.rows.length > 0 || hasGraph) && (
+          {/* REQ-2239: the header downloads the data only; the graph's image is on its command bar. */}
+          {frame.status === "done" && frame.rows.length > 0 && (
             <div className="gf-dl-wrap">
               <Menu
                 position="bottom-end"
@@ -704,70 +704,29 @@ export function GraphFrame({
                     </ActionIcon>
                   </Tip>
                 </Menu.Target>
-                <Menu.Dropdown className="gf-dl-menu">
-                  {frame.rows.length > 0 && (
-                    <Menu.Item
-                      className="gf-dl-item"
-                      onClick={() => {
-                        const json = JSON.stringify(frame.rows, null, 2);
-                        downloadBlob(new Blob([json], { type: "application/json" }), "result.json");
-                        setShowDlMenu(false);
-                      }}
-                    >
-                      {t("graphFrame.downloadJson")}
-                    </Menu.Item>
-                  )}
-                  {frame.rows.length > 0 && (
-                    <Menu.Item
-                      className="gf-dl-item"
-                      onClick={() => {
-                        const csv = toCSV(frame.columns, frame.rows);
-                        downloadBlob(new Blob([csv], { type: "text/csv" }), "result.csv");
-                        setShowDlMenu(false);
-                      }}
-                    >
-                      {t("graphFrame.downloadCsv")}
-                    </Menu.Item>
-                  )}
-                  {hasGraph && activeView === "graph" && (
-                    <Menu.Item
-                      className="gf-dl-item"
-                      onClick={() => {
-                        const cy = canvasCyRef.current;
-                        if (!cy) return;
-                        compositeGraphDownload(cy, canvasHullSvgRef.current, "graph.png", "png");
-                        setShowDlMenu(false);
-                      }}
-                    >
-                      {t("graphFrame.downloadPng")}
-                    </Menu.Item>
-                  )}
-                  {hasGraph && activeView === "graph" && (
-                    <Menu.Item
-                      className="gf-dl-item"
-                      onClick={() => {
-                        const cy = canvasCyRef.current;
-                        if (!cy) return;
-                        compositeGraphDownload(cy, canvasHullSvgRef.current, "graph.jpg", "jpg");
-                        setShowDlMenu(false);
-                      }}
-                    >
-                      {t("graphFrame.downloadJpg")}
-                    </Menu.Item>
-                  )}
-                  {hasGraph && activeView === "graph" && (
-                    <Menu.Item
-                      className="gf-dl-item"
-                      onClick={() => {
-                        const cy = canvasCyRef.current;
-                        if (!cy) return;
-                        downloadGraphSvg(cy, canvasHullSvgRef.current);
-                        setShowDlMenu(false);
-                      }}
-                    >
-                      {t("graphFrame.downloadSvg")}
-                    </Menu.Item>
-                  )}
+                <Menu.Dropdown className="gf-dl-menu" data-testid="graph-frame-download-menu">
+                  <Menu.Item
+                    className="gf-dl-item"
+                    data-testid="graph-frame-download-json"
+                    onClick={() => {
+                      const json = JSON.stringify(frame.rows, null, 2);
+                      downloadBlob(new Blob([json], { type: "application/json" }), "result.json");
+                      setShowDlMenu(false);
+                    }}
+                  >
+                    {t("graphFrame.downloadJson")}
+                  </Menu.Item>
+                  <Menu.Item
+                    className="gf-dl-item"
+                    data-testid="graph-frame-download-csv"
+                    onClick={() => {
+                      const csv = toCSV(frame.columns, frame.rows);
+                      downloadBlob(new Blob([csv], { type: "text/csv" }), "result.csv");
+                      setShowDlMenu(false);
+                    }}
+                  >
+                    {t("graphFrame.downloadCsv")}
+                  </Menu.Item>
                 </Menu.Dropdown>
               </Menu>
             </div>
@@ -896,12 +855,11 @@ export function GraphFrame({
               onCyReady={(cy) => {
                 canvasCyRef.current = cy;
                 if (typeof window !== "undefined")
-                  // eslint-disable-next-line react-hooks/immutability -- intentional debug-only global handle set from a cytoscape ready callback, not during render
                   (window as unknown as Record<string, unknown>).__cy = cy;
               }}
               clusterLevel={clusterLevel}
               requestedView={canvasView}
-              hullSvgRef={canvasHullSvgRef}
+              exportName={`${language}-graph`}
               note={frame.truncated && <GraphCutNote count={frame.nodes.size} />}
             />
             {!inspectorVisible && (
