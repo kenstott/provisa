@@ -54,6 +54,7 @@ import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter, useUrlTab } from "../list/useUrlFilter";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { useRequiredFields } from "../form/useRequiredFields";
+import { PageActions } from "../PageActions";
 
 const PAGE_SIZE = 50;
 
@@ -747,7 +748,7 @@ export function OrgsTab({ title }: { title: string }) {
             view === "orgs" ? "orgsTab.orgsFilterPlaceholder" : "orgsTab.invitesFilterPlaceholder",
           )}
         />
-        <div className="page-actions">
+        <PageActions>
           {view === "orgs" ? (
             <Button
               variant={creating ? "outline" : "filled"}
@@ -767,7 +768,7 @@ export function OrgsTab({ title }: { title: string }) {
               {creating ? <X size={14} /> : t("orgsTab.addInvite")}
             </Button>
           )}
-        </div>
+        </PageActions>
       </div>
       <Tabs
         value={view}

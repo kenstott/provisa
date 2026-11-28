@@ -64,6 +64,7 @@ import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useRememberedDetail } from "../list/useDetailParam";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
+import { PageActions } from "../PageActions";
 
 const KINDS: readonly RegistryKind[] = ["npm", "pypi", "goproxy", "cargo", "git"];
 
@@ -408,7 +409,7 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           placeholder={t("packageRegistries.filterPlaceholder")}
           testId="package-registries-filter"
         />
-        <div className="page-actions">
+        <PageActions>
           <Button
             variant={mode === "create" ? "outline" : "filled"}
             onClick={() => (mode === "create" ? closeForm() : openForm("create", blank("npm")))}
@@ -417,7 +418,7 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           >
             {mode === "create" ? <X size={14} /> : t("packageRegistries.add")}
           </Button>
-        </div>
+        </PageActions>
       </div>
       <Stack gap="md" data-testid="package-registries">
         <Text size="sm" c="dimmed">

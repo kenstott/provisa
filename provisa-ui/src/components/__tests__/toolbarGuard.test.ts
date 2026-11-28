@@ -142,6 +142,34 @@ describe("the toolbar rules fail what they are meant to fail", () => {
     ).toEqual([]);
   });
 
+  it("a page header with two (?) helps, but not one with its title's alone", () => {
+    expect(
+      rules(
+        `const x = <div className="page-header"><PageTitle icon={I}>T</PageTitle>` +
+          `<PageActions><Button>Add</Button><HelpBubble title="t" /></PageActions></div>;`,
+      ),
+    ).toEqual(["second-page-help"]);
+    expect(
+      rules(
+        `const x = <div className="page-header"><h2>T</h2><PageHelp title="a" />` +
+          `<div className="page-actions"><HelpBubble title="b" /></div></div>;`,
+      ),
+    ).toEqual(["second-page-help"]);
+    expect(
+      rules(
+        `const x = <div className="page-header"><PageTitle icon={I}>T</PageTitle>` +
+          `<PageActions><Button>Add</Button>` +
+          `<HelpBubble title="t" target={<ActionIcon variant="subtle" />} /></PageActions></div>;`,
+      ),
+    ).toEqual([]);
+  });
+
+  it("reads the shared PageActions as a toolbar", () => {
+    expect(
+      rules(`const x = <PageActions><HelpBubble title="t" /><Button>Add</Button></PageActions>;`),
+    ).toEqual(["toolbar-order"]);
+  });
+
   it("reads a page's head actions as a toolbar too", () => {
     expect(
       rules(
@@ -154,6 +182,15 @@ describe("the toolbar rules fail what they are meant to fail", () => {
 describe("every list page's filter", () => {
   it("sits in its page header, where it grows, not inside a toolbar", () => {
     const wrong = of("filter-in-toolbar").map(
+      ({ file, hits }) => `${file}: ${hits.map((v) => `line ${v.line}`).join("; ")}`,
+    );
+    expect(wrong).toEqual([]);
+  });
+});
+
+describe("every page header", () => {
+  it("draws one (?) help, its title's", () => {
+    const wrong = of("second-page-help").map(
       ({ file, hits }) => `${file}: ${hits.map((v) => `line ${v.line}`).join("; ")}`,
     );
     expect(wrong).toEqual([]);

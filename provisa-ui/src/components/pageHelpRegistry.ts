@@ -31,25 +31,48 @@ export interface PageHelpEntry {
 const p = (id: string) => `pageHelp.purpose.${id}`;
 
 export const PAGE_HELP: Readonly<Record<string, PageHelpEntry>> = {
-  "/sources": { purpose: p("sources"), docs: "sources/", placement: "title" },
-  "/tables": { purpose: p("tables"), docs: "configuration/#tables", placement: "title" },
+  "/sources": {
+    purpose: p("sources"),
+    more: ["sourcesPage.purposeBody", "sourcesPage.purposeAdd"],
+    docs: "sources/",
+    placement: "title",
+  },
+  "/tables": {
+    purpose: p("tables"),
+    more: ["tablesPage.purposeBody", "tablesPage.purposeAdd", "tablesPage.purposeModel"],
+    docs: "configuration/#tables",
+    placement: "title",
+  },
   "/views": {
     purpose: p("views"),
+    more: ["tablesPage.purposeAdd"],
     docs: "configuration/#views-governed-computed-datasets",
     placement: "title",
   },
   "/relationships": {
     purpose: p("relationships"),
+    more: ["relationshipsPage.purposeBody", "relationshipsPage.purposeAdd"],
     docs: "configuration/#relationships",
     placement: "title",
   },
-  "/metrics": { purpose: p("metrics"), docs: "modeling/#metrics", placement: "title" },
+  "/metrics": {
+    purpose: p("metrics"),
+    more: ["metricsPage.purposeBody", "metricsPage.purposeAdd"],
+    docs: "modeling/#metrics",
+    placement: "title",
+  },
   "/commands": { purpose: p("commands"), docs: "commands/", placement: "title" },
   "/lineage": { purpose: p("lineage"), docs: "lineage/", placement: "title" },
-  "/data-products": { purpose: p("dataProducts"), docs: "data-products/", placement: "title" },
+  "/data-products": {
+    purpose: p("dataProducts"),
+    more: ["dataProductsTab.purposeBody"],
+    docs: "data-products/",
+    placement: "title",
+  },
   "/team": { purpose: p("team"), docs: "access-model/#grants", placement: "title" },
   "/security/roles": {
     purpose: p("roles"),
+    more: ["securityPage.rolePurposeBody", "securityPage.rolePurposeAdd"],
     docs: "security/#roles-granted-derived-and-meta",
     placement: "title",
   },
@@ -236,6 +259,7 @@ export const PAGE_HELP: Readonly<Record<string, PageHelpEntry>> = {
   "/admin/import": { purpose: p("import"), docs: "import/", placement: "title" },
   "/admin/tags": {
     purpose: p("tags"),
+    more: ["tagsTab.purposeBody", "tagsTab.purposeAdd"],
     docs: "admin/#tags-library-sections-and-objects",
     placement: "title",
   },

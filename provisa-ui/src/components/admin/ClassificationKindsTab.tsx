@@ -61,6 +61,7 @@ import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
 import { ColumnRules } from "./ColumnRules";
+import { PageActions } from "../PageActions";
 
 /** A kind as either read answers it: the Admin list, or the Context page's, which adds where the
  * kind was detected (REQ-2259). */
@@ -561,7 +562,7 @@ export function ClassificationKindsTab({
           testId="classification-kinds-filter"
         />
         {canEdit && (
-          <div className="page-actions">
+          <PageActions>
             <Button
               variant={creating ? "outline" : "filled"}
               onClick={() => (creating ? closeForm() : openCreate())}
@@ -570,7 +571,7 @@ export function ClassificationKindsTab({
             >
               {creating ? <X size={14} /> : t("classificationKinds.addKind")}
             </Button>
-          </div>
+          </PageActions>
         )}
       </div>
       <Text size="sm" c="dimmed" mb="sm">

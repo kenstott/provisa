@@ -15,13 +15,16 @@
 // then the (?) help last. An icon-only button is borderless wherever it is: subtle or transparent,
 // or light for a toggle while it is on. A list page's filter is no toolbar control: it stands in the
 // page header between the title and the toolbar, where it grows (TablesPage), never inside one.
+// A page header draws one (?) help: the page's own, which its PageTitle carries (RoutePageHelp). A
+// second (?) anywhere in the header -- a HelpBubble with no target of its own, or a PageHelp --
+// fails, so a page never shows two.
 
 import ts from "typescript";
 
 export type ToolbarKind = "named" | "icon" | "help";
 
 export interface ToolbarViolation {
-  rule: "bordered-icon-button" | "toolbar-order" | "filter-in-toolbar";
+  rule: "bordered-icon-button" | "toolbar-order" | "filter-in-toolbar" | "second-page-help";
   line: number;
   detail: string;
 }
@@ -45,6 +48,11 @@ const CONTAINERS = new Set(["Group", "div", "span", "Stack", ""]);
 
 /** What a toolbar shows that is no control: its labels, badges and spacing. */
 const NEUTRAL = new Set(["Text", "Divider", "Space", "Badge"]);
+
+/** The shared page-header toolbar component: a toolbar by its name. */
+const TOOLBAR_COMPONENTS = new Set(["PageActions"]);
+
+const isPageHeader = (className: string) => /\bpage-header\b/.test(className);
 
 const isToolbar = (className: string) =>
   /\btoolbar\b|-toolbar\b|\bp3d-toolbar\b/.test(className) || /\bpage-actions\b/.test(className);
@@ -175,7 +183,25 @@ export function checkToolbarRules(file: string, source: string): ToolbarViolatio
     }
     if (open && ts.isJsxElement(n)) {
       const cls = attr(open, "className");
-      if (attr(open, "data-toolbar") || (cls && attrStrings(cls).some(isToolbar))) {
+      if (cls && attrStrings(cls).some(isPageHeader)) {
+        // Each (?) the header draws: its PageTitle's, and every help-kind control in it.
+        const helps: number[] = [];
+        const count = (c: ts.Node): void => {
+          const o = opening(c);
+          const tag = o?.tagName.getText();
+          if (o && (tag === "PageTitle" || tag === "PageHelp")) helps.push(lineOf(c));
+          if (o && tag === "HelpBubble" && !attr(o, "target")) helps.push(lineOf(c));
+          ts.forEachChild(c, count);
+        };
+        n.children.forEach(count);
+        for (const line of helps.slice(1))
+          out.push({ rule: "second-page-help", line, detail: `${helps.length} (?) helps` });
+      }
+      if (
+        attr(open, "data-toolbar") ||
+        TOOLBAR_COMPONENTS.has(open.tagName.getText()) ||
+        (cls && attrStrings(cls).some(isToolbar))
+      ) {
         const filters = (c: ts.Node): void => {
           const o = opening(c);
           if (o && o.tagName.getText() === "FilterInput")

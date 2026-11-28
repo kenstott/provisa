@@ -36,7 +36,6 @@ import { ListBulkBar } from "../components/list/ListBulkBar";
 
 import type { Metric, ListedTable } from "../types/admin";
 import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
-import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
 import { SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
@@ -48,6 +47,7 @@ import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../component
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
 import { listGlossaryTerms } from "../api/glossary";
+import { PageActions } from "../components/PageActions";
 
 interface MetricForm {
   name: string;
@@ -520,20 +520,14 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
           placeholder={t("metricsPage.filterPlaceholder")}
           testId="metrics-filter"
         />
-        <div className="page-actions">
+        <PageActions>
           {/* The opener is hidden while a metric form is open (the form ends in Save, Cancel). */}
           {!readOnly && !creating && editingName === null && (
             <Button onClick={openCreate} data-testid="metrics-new-button">
               {t("metricsPage.newMetric")}
             </Button>
           )}
-          <HelpBubble
-            title={t("metricsPage.purposeTitle")}
-            paragraphs={[t("metricsPage.purposeBody"), t("metricsPage.purposeAdd")]}
-            ariaLabel={t("metricsPage.purposeAria")}
-            testId="metrics-purpose-help"
-          />
-        </div>
+        </PageActions>
       </div>
 
       {/* REQ-1316: semantic interchange (Ossie) — export endpoint/download + import review. */}

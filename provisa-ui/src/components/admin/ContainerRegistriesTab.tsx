@@ -51,6 +51,7 @@ import { useRememberedDetail } from "../list/useDetailParam";
 import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
+import { PageActions } from "../PageActions";
 
 /** An entry as the form holds it. */
 interface Draft {
@@ -315,7 +316,7 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
           placeholder={t("containerRegistries.filterPlaceholder")}
           testId="container-registries-filter"
         />
-        <div className="page-actions">
+        <PageActions>
           <Button
             variant={mode === "create" ? "outline" : "filled"}
             onClick={() => (mode === "create" ? closeForm() : openForm("create", BLANK))}
@@ -324,7 +325,7 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
           >
             {mode === "create" ? <X size={14} /> : t("containerRegistries.add")}
           </Button>
-        </div>
+        </PageActions>
       </div>
       <Stack gap="md" data-testid="container-registries">
         <Text size="sm" c="dimmed">

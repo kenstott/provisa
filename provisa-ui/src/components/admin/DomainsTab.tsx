@@ -59,6 +59,7 @@ import {
   NamingConventionsCard,
   OrgProcessingCards,
 } from "./settingsCards";
+import { PageActions } from "../PageActions";
 
 const PAGE_SIZE = 50;
 
@@ -395,7 +396,7 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
             testId="domains-filter"
           />
         )}
-        <div className="page-actions">
+        <PageActions>
           {domainsEnabled && (
             <Button
               variant={adding ? "outline" : "filled"}
@@ -406,7 +407,7 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
               {adding ? <X size={14} /> : t("adminPage.addDomain")}
             </Button>
           )}
-        </div>
+        </PageActions>
       </div>
       <Stack gap="lg">
         <Collapsibles id="admin.domains.settings" testId="domain-settings-panel">

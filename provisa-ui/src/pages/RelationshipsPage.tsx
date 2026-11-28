@@ -80,6 +80,7 @@ import { ListBulkBar } from "../components/list/ListBulkBar";
 import { JoinThroughAction } from "../components/relationships/JoinThroughAction";
 import { ColumnFilterMenu } from "./sql/ColumnFilterMenu";
 import type { FilterSpec } from "./sql/columnFilter";
+import { PageActions } from "../components/PageActions";
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -755,7 +756,7 @@ export function RelationshipsPage() {
           onChange={updateSearch}
           placeholder={t("relationshipsPage.filterPlaceholder")}
         />
-        <div className="page-actions">
+        <PageActions>
           {canManage && (
             <Button
               data-tour="rels-add"
@@ -813,13 +814,7 @@ export function RelationshipsPage() {
               target={<DiscoverButton running={discovery.running} onOpen={openDiscover} />}
             />
           )}
-          <HelpBubble
-            title={t("relationshipsPage.purposeTitle")}
-            paragraphs={[t("relationshipsPage.purposeBody"), t("relationshipsPage.purposeAdd")]}
-            ariaLabel={t("relationshipsPage.purposeAria")}
-            testId="rels-purpose-help"
-          />
-        </div>
+        </PageActions>
       </div>
 
       {discoverError && (

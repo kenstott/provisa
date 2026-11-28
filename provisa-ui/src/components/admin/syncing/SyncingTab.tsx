@@ -65,6 +65,7 @@ import { FilterInput } from "../FilterInput";
 import { EntryPanel } from "./EntryPanel";
 import { SyncProductFilter } from "./SyncProductFilter";
 import type { Secrets } from "./EntryFields";
+import { PageActions } from "../../PageActions";
 
 /** A new entry being made in the panel: empty from Add, or filled from the kept entry it
  *  duplicates. A kept entry open in the panel is the URL's ?entry=. */
@@ -163,7 +164,7 @@ export function SyncingTab() {
         placeholder={t("syncingTab.filterPlaceholder")}
         testId="syncing-filter"
       />
-      <div className="page-actions">
+      <PageActions>
         {/* An entry is added to the list once it is read. */}
         {s !== null && (
           <Button
@@ -174,7 +175,7 @@ export function SyncingTab() {
             {t("syncingTab.addEntry")}
           </Button>
         )}
-      </div>
+      </PageActions>
     </div>
   );
 

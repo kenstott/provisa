@@ -66,7 +66,6 @@ import { usePutBackRegions, useTableWithdrawal } from "../hooks/useWithdrawal";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
-import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { diffEditedColumns } from "./tables/columnDiff";
@@ -133,6 +132,7 @@ import {
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { assignableDomainIds } from "../lib/internalDomains";
+import { PageActions } from "../components/PageActions";
 
 const columnTypes = (cols: { name: string; dataType: string }[]): Record<string, string> =>
   Object.fromEntries(cols.map((c) => [c.name, c.dataType]));
@@ -1220,7 +1220,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           hidden={regionHidden}
           error={regionError}
         />
-        <div className="page-actions">
+        <PageActions>
           {!viewsOnly && !hidingOnly && (
             <Button
               data-tour="tables-add"
@@ -1326,17 +1326,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             body={translate("tablesPage.erdHelpBody")}
             label={translate("tablesPage.viewErd")}
           />
-          <HelpBubble
-            title={translate("tablesPage.purposeTitle")}
-            paragraphs={[
-              translate("tablesPage.purposeBody"),
-              translate("tablesPage.purposeAdd"),
-              translate("tablesPage.purposeModel"),
-            ]}
-            ariaLabel={translate("tablesPage.purposeAria")}
-            testId="tables-purpose-help"
-          />
-        </div>
+        </PageActions>
       </div>
 
       {/* A form open in the panel says its own problem under the panel's head. */}

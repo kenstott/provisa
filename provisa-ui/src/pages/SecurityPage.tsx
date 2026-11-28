@@ -28,7 +28,6 @@ import {
   Textarea,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
-import { HelpBubble } from "../components/HelpBubble";
 import { MultiSelect } from "../components/MultiSelect";
 import { useCapability } from "../hooks/useCapability";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
@@ -77,6 +76,7 @@ import { derivedRoleMatches, roleRowTexts } from "./security/roleRowTexts";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
+import { PageActions } from "../components/PageActions";
 /** A role may be saved once it lists a domain, or holds no capability to apply in one (REQ-2155). */
 function listsADomain(form: { domainAccess: string[]; capabilities: Capability[] }): boolean {
   return form.domainAccess.length > 0 || form.capabilities.length === 0;
@@ -677,7 +677,7 @@ export function SecurityRolesPage() {
           placeholder={t("securityPage.filterByRoleId")}
         />
         {/* The bubble explains this button, so it travels with it. */}
-        <div className="page-actions">
+        <PageActions>
           {mayDefine && !showRoleForm && !showDerivedForm && (
             // REQ-2078: a role is granted rights; a derived one comes from an attribute.
             <Menu position="bottom-end" withinPortal>
@@ -712,13 +712,7 @@ export function SecurityRolesPage() {
               </Menu.Dropdown>
             </Menu>
           )}
-          <HelpBubble
-            title={t("securityPage.rolePurposeTitle")}
-            paragraphs={[t("securityPage.rolePurposeBody"), t("securityPage.rolePurposeAdd")]}
-            ariaLabel={t("securityPage.rolePurposeAria")}
-            testId="roles-purpose-help"
-          />
-        </div>
+        </PageActions>
       </div>
 
       <SplitPane
