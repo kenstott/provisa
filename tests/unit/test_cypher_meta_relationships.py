@@ -998,3 +998,60 @@ def test_a_walk_between_free_ends_whose_types_reach_several_labels_is_refused_by
     lm, _con = meta
     with pytest.raises(CypherTranslateError, match="labeled source and target nodes"):
         _sql(lm, "MATCH p = (a)-[:MEMBER_TABLES|SOURCE*1..2]-(b) RETURN p")
+
+
+# --- the explorer's label-click statements: OPTIONAL MATCH over a junction or an FK, undirected ---
+# Reported 2026-11-28 from the Cypher explorer: the hop's junction (rX__via) and its far node were
+# selected but never joined. Terms 1 and 2 are referenced by columns 'c1' and 'c2' (_term_refs);
+# columns 901/902 belong to no registered table, column 903 to table 10.
+
+
+@pytest.fixture(scope="module")
+def label_click(selfrel):
+    lm, con = selfrel
+    _insert(con, "table_columns", id=903, name="c3", column_key="c3", table_id=10)
+    return lm, con
+
+
+_TERM_COLUMNS = (
+    "MATCH (n:Ontology:Terms) "
+    "OPTIONAL MATCH (n)-[rTableColumns:REFERENCED_BY]-(mTableColumns:Meta:TableColumns) "
+)
+_COLUMN_TABLE = (
+    "MATCH (n:Meta:TableColumns) "
+    "OPTIONAL MATCH (n)-[rRegisteredTa:HAS_TABLE_COLUMNS]-(mRegisteredTa:Meta:RegisteredTables) "
+)
+
+
+def test_an_optional_undirected_junction_hop_joins_its_junction(label_click):
+    lm, _con = label_click
+    sql = _sql(lm, _TERM_COLUMNS + "RETURN n, rTableColumns, mTableColumns LIMIT 1000")
+    assert '"_term_refs_meta" AS rTableColumns__via' in sql
+
+
+def test_an_optional_undirected_junction_hop_returns_each_term_and_its_columns(label_click):
+    rows = _rows(
+        label_click,
+        _TERM_COLUMNS + "RETURN n.id, mTableColumns.name, rTableColumns IS NULL LIMIT 1000",
+    )
+    assert rows == [(1, "c1", False), (2, "c2", False), (3, None, True)]
+
+
+def test_an_optional_undirected_junction_hop_returns_whole_entities(label_click):
+    rows = _rows(label_click, _TERM_COLUMNS + "RETURN n, rTableColumns, mTableColumns LIMIT 1000")
+    assert len(rows) == 3
+    assert sum(1 for _n, r, m in rows if r is None and m is None) == 1
+
+
+def test_an_optional_undirected_fk_hop_joins_its_far_node(label_click):
+    rows = _rows(
+        label_click,
+        _COLUMN_TABLE + "RETURN n.id, mRegisteredTa.id, rRegisteredTa IS NULL LIMIT 2500",
+    )
+    assert rows == [(901, None, True), (902, None, True), (903, 10, False)]
+
+
+def test_an_optional_undirected_fk_hop_returns_whole_entities(label_click):
+    rows = _rows(label_click, _COLUMN_TABLE + "RETURN n, rRegisteredTa, mRegisteredTa LIMIT 2500")
+    assert len(rows) == 3
+    assert sum(1 for _n, r, m in rows if r is None and m is None) == 2
