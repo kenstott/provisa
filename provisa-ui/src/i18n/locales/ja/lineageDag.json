@@ -5,6 +5,7 @@
     "reportedEdge": "OpenLineage による報告",
     "columns_one": "{{count}} 列",
     "columns_other": "{{count}} 列",
+    "via": "{{views}} 経由",
     "unused": "+{{count}} 未使用",
     "materialized": "マテリアライズ済み",
     "feedbackCycle": "フィードバックサイクル内",

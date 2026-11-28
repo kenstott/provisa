@@ -102,6 +102,7 @@
     "openAsQueryFocused": "搜索或聚焦的邻域目前还无法用一个查询表达。",
     "openAsQueryCompiling": "正在编译查询…",
     "openAsQueryNoCypher": "此查询没有 Cypher 形式。",
+    "openAsQueryCypherOnly": "全部跳数是 Cypher 查询：请以 Cypher 打开。",
     "layersMenu": "图层",
     "termsMenu": "术语",
     "menuAll": "全部",

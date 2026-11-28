@@ -17,9 +17,14 @@
 // indirect: it reads through views not drawn, or an OpenLineage event reported it rather than the
 // model deriving it (REQ-2229). The view says what each thing is; the graph says how it is drawn.
 
-import type { GraphEdgeSpec, GraphGroupSpec, GraphNodeSpec, GraphSpec } from "../provisa-graph/model";
+import type {
+  GraphEdgeSpec,
+  GraphGroupSpec,
+  GraphNodeSpec,
+  GraphSpec,
+} from "../provisa-graph/model";
 import type { NodeType } from "../provisa-graph/tokens";
-import type { LineageBox, LineageLayoutModel, LineageRow, Role } from "./lineage-layout";
+import type { EdgeWords, LineageBox, LineageLayoutModel, LineageRow, Role } from "./lineage-layout";
 import { edgeText } from "./lineage-layout";
 
 /** The node type a field of each role is drawn as: its band, icon and type line. */
@@ -35,10 +40,7 @@ export const ROLE_TYPE: Record<Role, NodeType> = {
 };
 
 /** The words a lineage graph's cards say, already translated. */
-export interface LineageWords {
-  reported: string;
-  /** "<n> columns" */
-  columns: (count: number) => string;
+export interface LineageWords extends EdgeWords {
   /** "<n> unused" */
   unused: (count: number) => string;
   materialized: string;
@@ -111,7 +113,7 @@ export function lineageSpec(
     id: e.id,
     source: e.source,
     target: e.target,
-    label: edgeText(e, words.reported),
+    label: edgeText(e, words),
     arrow: "target",
     ...(e.reported || e.via.length > 0 ? { dashed: true } : {}),
     data: { commandName: e.commandName ?? "" },

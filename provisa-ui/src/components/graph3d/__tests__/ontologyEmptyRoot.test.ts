@@ -92,8 +92,8 @@ describe("a read whose root has no terms", () => {
     expect(sent.queries[1]).not.toContain("edgesOut");
     expect(loaded?.over).toBeUndefined();
     expect(drawn(loaded)?.nodes.map((n) => n.id)).toEqual(["p:fresh"]);
-    // What the view opens as a query is still the whole read.
-    expect(loaded?.query).toContain("_terms:");
+    // REQ-2174 (amended 2026-11-26): what the view opens as a query is the one query that read it.
+    expect(loaded?.query).toBe(sent.queries[1]);
   });
 
   it("reads nothing more for a term's snippet whose term is gone", async () => {

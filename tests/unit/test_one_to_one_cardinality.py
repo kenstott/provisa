@@ -28,6 +28,7 @@ from pydantic import ValidationError
 
 from provisa.compiler import naming as _naming
 from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler.params import ParamCollector
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_selection import rel_read
 from provisa.compiler.sql_types import (
@@ -244,6 +245,7 @@ def _read(cardinality: str):
         2,
         StatementSources(_table(1, "orders")),
         None,
+        collector=ParamCollector(),
     )
 
 

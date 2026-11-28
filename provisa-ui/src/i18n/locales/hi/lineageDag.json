@@ -5,6 +5,7 @@
     "reportedEdge": "OpenLineage द्वारा रिपोर्ट किया गया",
     "columns_one": "{{count}} कॉलम",
     "columns_other": "{{count}} कॉलम",
+    "via": "{{views}} के माध्यम से",
     "unused": "+{{count}} अप्रयुक्त",
     "materialized": "मटीरियलाइज़्ड",
     "feedbackCycle": "फ़ीडबैक चक्र में",

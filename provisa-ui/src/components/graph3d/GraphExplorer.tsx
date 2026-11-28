@@ -68,6 +68,7 @@ import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { kindKey, shownKinds } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
+import type { QueryLanguage } from "./useOntology";
 import { erdHref, nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import { NodeFacts } from "./nodeFacts";
@@ -157,6 +158,9 @@ export function GraphExplorer({
     all: GraphData;
     onScope: (s: QueryScope) => void;
     text: string | null;
+    /** The language ``text`` is written in: GraphQL, or Cypher for All hops (REQ-2174, amended
+     * 2026-11-26); null while there is no text. */
+    language: QueryLanguage | null;
     /** The focus the query itself states (a product's graph, read for that product): no
      * neighbourhood beyond the query's own. */
     own?: string;
@@ -367,7 +371,12 @@ export function GraphExplorer({
   }, [filters, choices, edgeTypes, within]);
   // The scope the query reads, reported whenever it changes (a key, so an equal one is not news).
   const onScope = query?.onScope;
+  // REQ-2136, REQ-2174 (amended 2026-11-26, A DRAWN GRAPH OPENS AS THE QUERY THAT DREW IT): the
+  // query states the focus the view draws -- the Focus filter's, one node or several -- so the
+  // query read is the neighbourhood drawn, and opens as it; with none focused, the query's own
+  // (a product's graph's product). Under the page's search the search is the focus.
   const own = query?.own ?? null;
+  const focusKey = search === undefined ? [...filters.focus].sort().join("\n") : "";
   const scopeKey = JSON.stringify([
     [...on].sort(),
     narrowed.domains,
@@ -379,23 +388,25 @@ export function GraphExplorer({
     searchItems(search ?? ""),
     flat,
     depthValue(depth),
+    focusKey,
   ]);
   useEffect(() => {
     if (!onScope) return;
-    const [l, domains, types, statuses, kept, tags, sensitivities, items, lanes, hops] = JSON.parse(
-      scopeKey,
-    ) as [
-      LayerId[],
-      string[],
-      string[],
-      TermStatus[],
-      boolean,
-      string[],
-      string[],
-      SearchGroups,
-      boolean,
-      string,
-    ];
+    const [l, domains, types, statuses, kept, tags, sensitivities, items, lanes, hops, focused] =
+      JSON.parse(scopeKey) as [
+        LayerId[],
+        string[],
+        string[],
+        TermStatus[],
+        boolean,
+        string[],
+        string[],
+        SearchGroups,
+        boolean,
+        string,
+        string,
+      ];
+    const chosen = focused === "" ? [] : focused.split("\n");
     onScope({
       layers: new Set(l),
       domains,
@@ -406,14 +417,15 @@ export function GraphExplorer({
       sensitivities,
       search: items,
       lanes,
-      focus: own,
+      focus: chosen.length === 0 ? own : chosen.length === 1 ? chosen[0] : chosen,
       depth: depthOf(hops),
     });
   }, [onScope, scopeKey, own]);
 
-  // REQ-2143: the page's search is the query's own (its root filter and its neighbourhood); a node
-  // focused by the focus field (the product graph's) is a neighbourhood no query states yet.
-  const focused = filters.focus.some((f) => f !== query?.own);
+  // REQ-2143: the page's search is the query's own (its root filter and its neighbourhood), and so
+  // is a node focused by the Focus filter (above). Under a search the Focus filter is not offered,
+  // and a focus it holds is a neighbourhood the query does not state.
+  const focused = search !== undefined && filters.focus.some((f) => f !== query?.own);
   // The one node the graph is focused on (not a search): what its hops are counted from.
   const focusNode = useMemo(() => {
     const id = search === undefined && filters.focus.length === 1 ? filters.focus[0] : null;
@@ -422,7 +434,15 @@ export function GraphExplorer({
   // What the drawing reads of ``query``: the page rebuilds the object on each render, and a drawing
   // redrawn on every render of the page loses its layout (the 2D lanes are laid out anew).
   const queried = query !== undefined;
-  const queryOwn = query?.own;
+  // The foci the query states (above): their neighbourhood is what it read.
+  const queryOwnFocus = query?.own;
+  const stated = useMemo(
+    () =>
+      new Set(
+        focusKey !== "" ? focusKey.split("\n") : queryOwnFocus === undefined ? [] : [queryOwnFocus],
+      ),
+    [focusKey, queryOwnFocus],
+  );
   const shown = useMemo(() => {
     // The page's search, when it drives the focus: what it matches, by title or definition.
     const items = search === undefined ? null : searchItems(search);
@@ -441,7 +461,7 @@ export function GraphExplorer({
     // The focus the query itself states (a term's snippet's) is read as its neighbourhood: it
     // prunes nothing more here. A product's hops are counted here too (REQ-2174, amended
     // 2026-11-07), in 2D as in 3D, a step between terms (amended 2026-11-12).
-    const own = (f: string) => f === queryOwn && !f.startsWith("p:");
+    const own = (f: string) => queried && stated.has(f) && !f.startsWith("p:");
     const narrowing = {
       ...filters,
       focus: matched ?? filters.focus.filter((f) => !own(f)),
@@ -473,7 +493,7 @@ export function GraphExplorer({
     filters,
     narrowed,
     queried,
-    queryOwn,
+    stated,
     expanded,
     reachScope,
     orphans,
@@ -501,13 +521,19 @@ export function GraphExplorer({
       flat ? new Map<string, [number, number, number]>() : layoutGraph(folded, layout, attraction),
     [folded, layout, attraction, flat],
   );
+  // What can be focused: the terms and products read, and -- the focus being the query's own, so
+  // what is read narrows to its neighbourhood -- those the controls choose from (query.all).
+  const queryAll = query?.all;
   const focusable = useMemo(
     () =>
-      data.nodes
-        .filter((n) => n.type === "product" || n.type === "term")
-        .map((n) => ({ value: n.id, label: n.label }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [data],
+      [
+        ...new Map(
+          (queryAll === undefined ? data.nodes : [...queryAll.nodes, ...data.nodes])
+            .filter((n) => n.type === "product" || n.type === "term")
+            .map((n) => [n.id, { value: n.id, label: n.label }]),
+        ).values(),
+      ].sort((a, b) => a.label.localeCompare(b.label)),
+    [data, queryAll],
   );
 
   // A preset chooses its layers and its edge types afresh.
@@ -724,7 +750,14 @@ export function GraphExplorer({
           }}
           testId={testId}
         />
-        {query && <OpenAsQuery query={query.text} focused={focused} testId={testId} />}
+        {query && (
+          <OpenAsQuery
+            query={query.text}
+            language={query.language}
+            focused={focused}
+            testId={testId}
+          />
+        )}
         {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
       </Group>
       {!scope.menus && !flat && (

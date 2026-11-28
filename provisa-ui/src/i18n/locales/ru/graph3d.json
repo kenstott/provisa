@@ -102,6 +102,7 @@
     "openAsQueryFocused": "Окрестность поиска или фокуса пока нельзя выразить одним запросом.",
     "openAsQueryCompiling": "Компиляция запроса…",
     "openAsQueryNoCypher": "У этого запроса нет формы Cypher.",
+    "openAsQueryCypherOnly": "Все шаги — это запрос Cypher: откройте его как Cypher.",
     "layersMenu": "Слои",
     "termsMenu": "Термины",
     "menuAll": "все",
