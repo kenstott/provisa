@@ -77,13 +77,6 @@ ALLOWED: dict[tuple[str, str], str] = {
     "repository (maven_bundles.py). Move: drop --github-release once every bundle is on Maven "
     "Central.",
     (
-        "provisa/federation/stage_duckdb_extensions.py",
-        "https://kenstott.github.io/provisa/simple/",
-    ): "the release's package index on GitHub Pages, added as pip's extra index by the staging "
-    "step (python -m provisa.runtime_deps.stage_assets) for provisa-duckdb-ext; a running Provisa "
-    "only LOADs staged extensions. Move: provisa-duckdb-ext on PyPI once access returns; then the "
-    "extra index goes.",
-    (
         "provisa/runtime_deps/code_runtimes.py",
         "https://github.com/oven-sh/bun/releases/download/bun-v{version}/{filename}",
     ): "Bun for JavaScript code sources. Move: npm, Oven's own per-platform packages "
@@ -249,8 +242,11 @@ HOSTS: dict[str, str] = {
     "extensions, named in EXTENSION_REPOSITORIES (provisa/federation/duckdb_extensions.py) for "
     "the provisa-duckdb-ext mirror build alone; a running Provisa only LOADs staged extensions "
     "and never reaches it. No move.",
-    "kenstott.github.io": "the release's package index on GitHub Pages; see ALLOWED above. "
-    "Move: provisa-duckdb-ext on PyPI once access returns.",
+    "pkgs.provisa.dev": "the release's package index, served by GitHub Pages under the project's "
+    "own domain, added as pip's extra index by the staging step "
+    "(python -m provisa.runtime_deps.stage_assets) for provisa-duckdb-ext; a running Provisa only "
+    "LOADs staged extensions. Move: provisa-duckdb-ext on PyPI once access returns; then the "
+    "extra index goes.",
     "ghcr.io": "published demo bundles (provisa/core/demo_bundles.py PUBLISHED_AT), an OCI "
     "registry; PROVISA_DEMO_REGISTRY or --registry points at a mirror. Move (follow-up): open "
     "question, none of the three registries hosts OCI artifacts; publish the demo bundles as a "
@@ -348,7 +344,6 @@ HOSTS: dict[str, str] = {
     "cloud.getdbt.com": _UI_LINK,
     "dbpedia.org": _UI_LINK,
     "en.wikipedia.org": _UI_LINK,
-    "js.cytoscape.org": _UI_LINK,
     "vscode.dev": _UI_LINK,
     "js.stripe.com": "Stripe.js for the hosted billing page; Stripe requires it be loaded from "
     "js.stripe.com, never bundled (provisa-ui/src/api/billing.ts). A hosted-billing service the "

@@ -22,7 +22,7 @@ the hosts a dependency reaches by its own default, which no URL in Provisa's cod
 
 | What | From | Pip path | Registry home |
 |---|---|---|---|
-| `provisa` wheel | Pages index `kenstott.github.io/provisa/simple/` linking GitHub release assets | yes | PyPI (needs the size-limit increase or a smaller wheel) |
+| `provisa` wheel | Pages index `pkgs.provisa.dev/simple/` linking GitHub release assets | yes | PyPI (needs the size-limit increase or a smaller wheel) |
 | `provisa-duckdb-ext` (non-core DuckDB extensions, Query.Farm crypto and airport) | Pages index, GitHub release assets | yes | PyPI |
 | `provisa-notebook` (Pyodide), `provisa-client` | Pages index (`scripts/release_wheel_index.py` `PROJECTS`); `docs/cli.md` still says PyPI | yes | PyPI |
 | `duckdb-extension-*` (postgres_scanner, httpfs, sqlite_scanner, iceberg, azure, delta, avro) | PyPI, third-party wheels | yes | PyPI already; later Provisa's own per-extension projects |

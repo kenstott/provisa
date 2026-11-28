@@ -16,7 +16,7 @@
 # to PyPI: it outgrew PyPI's 10 GB project limit (alpha.510). Nothing is published to PyPI at all
 # (maintainer 2026-11-21): the server, client and notebook wheels (and the client and notebook
 # sdists) are release assets, listed by the package index on GitHub Pages (`pip install provisa
-# --extra-index-url https://kenstott.github.io/provisa/simple/`).
+# --extra-index-url https://pkgs.provisa.dev/simple/`).
 #
 # A tag starts nothing. Run by hand (Actions -> Build Provisa Packages -> Run workflow) on
 # release/<version>, once the suites are green there, it is the release's DRY RUN, which "Release:

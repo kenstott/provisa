@@ -38,7 +38,10 @@ import yaml
 from tests import duckdb_ext_wheels
 from tests.pyodide_downloads import build_context_args
 
-pytestmark = [pytest.mark.integration]
+# The first test's setup builds the whole API image: about 300 s on an Ubuntu runner, 767 s in a
+# NixOS guest's core shard (run 45921735865) and past the lane's 900 s per-test bound in one alone
+# (run 45940557737). Its own bound is the build's, not the lane's.
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(1800)]
 
 _REPO = Path(__file__).resolve().parents[2]
 _IMAGE = "provisa-keytest:local"

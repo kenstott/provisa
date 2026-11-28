@@ -22,6 +22,7 @@ here — this module only shapes catalog metadata and paginates results.
 from __future__ import annotations
 
 import json
+import os
 import types
 from pathlib import Path
 from typing import Any
@@ -1091,6 +1092,9 @@ async def set_data_product_members(  # REQ-1634
             await _refuse_table_outside_selection(conn, table_id)
         await data_product_repo.set_members(conn, id, table_ids=table_ids, commands=command_names)
     await _rebuild_schemas()
+    from provisa.dq.scan import reschedule_org_checkers
+
+    await reschedule_org_checkers()  # REQ-2158: a member's type check follows its membership
     return {"ok": True}
 
 
@@ -1662,6 +1666,12 @@ def render_graph(
             "(npm ci && npm run build in provisa-ui/graph-render)"
         )
     timeout = settings_registry.value("mcp.render_timeout_s")
+    # On NixOS, nixpkgs' node is native and loads no FHS library path, so the prebuilt canvas
+    # addon cannot find libuuid.so.1; nix-ld names the library set it gives FHS binaries in
+    # NIX_LD_LIBRARY_PATH, and the renderer gets it as its LD_LIBRARY_PATH (maintainer
+    # 2026-11-26). Elsewhere the variable is unset and node inherits this environment unchanged.
+    nix_ld_path = os.environ.get("NIX_LD_LIBRARY_PATH")
+    env = None if nix_ld_path is None else {**os.environ, "LD_LIBRARY_PATH": nix_ld_path}
     request = {
         "elements": {"nodes": nodes, "edges": edges},
         "layout": layout,
@@ -1676,6 +1686,7 @@ def render_graph(
             capture_output=True,
             timeout=timeout,
             check=False,
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(

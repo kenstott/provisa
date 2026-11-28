@@ -203,6 +203,7 @@ export const GRAPH: GraphSchemaDoc = {
       ),
     },
   ],
+  commands: [],
 };
 
 export const VOCABULARY: SparqlVocabulary = {

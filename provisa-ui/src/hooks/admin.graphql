@@ -322,6 +322,8 @@ fragment ListedTableFields on RegisteredTableType {
   schemaName
   tableName
   alias
+  sqlSchema
+  sqlName
   description
   withdrawn
   sourceWithdrawn
@@ -378,6 +380,8 @@ query TablesQuery($includeWithdrawn: Boolean! = false) {
     schemaName
     tableName
     alias
+    sqlSchema
+    sqlName
     description
     registeredAt
     cacheTtl
@@ -992,6 +996,18 @@ query GenerateUnregisteredColumnDescription(
     columns: $columns
     columnName: $columnName
   )
+}
+
+# REQ-2361, REQ-194: names suggested before an object is saved come from the naming authority.
+query SuggestReverseRelAlias($graphqlAlias: String, $cypherAlias: String) {
+  suggestReverseRelAlias(graphqlAlias: $graphqlAlias, cypherAlias: $cypherAlias) {
+    graphqlAlias
+    cypherAlias
+  }
+}
+
+query SuggestColumnAliases($columns: [String!]!) {
+  suggestColumnAliases(columns: $columns)
 }
 
 query SuggestTableAlias($tableName: String!, $domainId: String!, $sourceId: String!) {

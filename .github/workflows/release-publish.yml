@@ -3,7 +3,7 @@
 # The release's publications: the draft release checked for every asset and undrafted,
 # the provisa wheel index regenerated on GitHub Pages, the engine and Flight proxy images pushed.
 # Nothing goes to PyPI (maintainer 2026-11-21). The server, client and notebook wheels are release
-# assets: users install them through the Pages index, https://kenstott.github.io/provisa/simple/.
+# assets: users install them through the Pages index, https://pkgs.provisa.dev/simple/.
 #
 # Nothing is attached here. Every job that builds a release asset attaches it to the draft itself,
 # once (.github/actions/attach-release-assets): GitHub has no server-side copy from a workflow

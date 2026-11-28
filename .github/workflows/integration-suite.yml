@@ -67,6 +67,11 @@ on:
         type: boolean
         required: false
         default: false
+      include_google_workspace:
+        description: "Also run the Google Workspace lane (the maintainer's live domain)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -124,6 +129,9 @@ jobs:
       M365_CLIENT_ID: ${{ secrets.M365_CLIENT_ID }}
       M365_CLIENT_SECRET: ${{ secrets.M365_CLIENT_SECRET }}
       M365_TEST_MAILBOXES: ${{ secrets.M365_TEST_MAILBOXES }}
+      GWS_SERVICE_ACCOUNT_KEY_FILE: ${{ secrets.GWS_SERVICE_ACCOUNT_KEY_FILE }}
+      GWS_TEST_MAILBOXES: ${{ secrets.GWS_TEST_MAILBOXES }}
+      GWS_ADMIN_ADDRESS: ${{ secrets.GWS_ADMIN_ADDRESS }}
       BIGQUERY_LOCATION: ${{ secrets.BIGQUERY_LOCATION }}
       BIGQUERY_TEST_GCS_BUCKET: ${{ secrets.BIGQUERY_TEST_GCS_BUCKET }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -192,6 +200,7 @@ jobs:
       include_athena: ${{ inputs.include_athena || false }}
       include_servicenow: ${{ inputs.include_servicenow || false }}
       include_microsoft_365: ${{ inputs.include_microsoft_365 || false }}
+      include_google_workspace: ${{ inputs.include_google_workspace || false }}
     concurrency:
       group: ${{ (inputs.tests || '') == '' && 'integration-suite' || format('integration-suite-targeted-{0}', github.ref) }}
       queue: max

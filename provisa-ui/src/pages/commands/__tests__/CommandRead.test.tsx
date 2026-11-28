@@ -102,7 +102,7 @@ describe("a function's read view", () => {
       ["Writes table", "public.orders"],
       ["Requires approval", "Yes"],
       ["Description", "Refunds an order"],
-      ["Arguments", "order_id: Int"],
+      ["Arguments", "order_id: Int (value)"],
     ]);
     // A dataset's columns are on the Columns tab, not under the command's own fields.
     expect(screen.queryByTestId("function-read-columns-card")).toBeNull();

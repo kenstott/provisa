@@ -28,7 +28,7 @@ from pathlib import Path
 
 from provisa.codesource import macos_sandbox
 from provisa.codesource.egress import EgressProxy
-from provisa.codesource.linux_sandbox import SandboxUnavailable, launcher_argv
+from provisa.codesource.linux_sandbox import SandboxUnavailable, launcher_argv, nix_store_grant
 from provisa.codesource.worker import HostCommand, TableReads
 
 _proxies: dict[frozenset[str], EgressProxy] = {}
@@ -63,6 +63,13 @@ def egress_proxy(allow: Iterable[str]) -> EgressProxy:
         return proxy
 
 
+def _linux_readable(executable: Path, read: Sequence[Path], env: dict[str, str]) -> list[str]:
+    """What a Linux worker reads: ``read``, the runtime's directory, and on a Nix host the store
+    closure of the runtime, the host program, the loader and nix-ld's libraries."""
+    readable = [str(p) for p in (*read, executable.parent)]
+    return [*readable, *nix_store_grant(str(executable), readable, env)]
+
+
 def sandboxed(
     argv: Callable[[str], Sequence[str]],
     *,
@@ -95,7 +102,7 @@ def sandboxed(
 
         return HostCommand(argv=_macos, env=env, cwd=cwd, table_reads=table_reads)
     if system == "Linux":
-        readable = [str(p) for p in (*read, executable.parent)]
+        readable = _linux_readable(executable, read, env)
 
         def _linux(address: str) -> list[str]:
             return launcher_argv(
@@ -130,6 +137,6 @@ def sandboxed_once(
             argv, executable=executable, read=read, socket_path=None, proxy_port=proxy.port
         ), env
     if system == "Linux":
-        readable = [str(p) for p in (*read, executable.parent)]
+        readable = _linux_readable(executable, read, env)
         return launcher_argv(sys.executable, read=readable, proxy_port=proxy.port, argv=argv), env
     raise SandboxUnavailable(f"a code source cannot run on {system}: it has no code-source sandbox")

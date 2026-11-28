@@ -8,7 +8,7 @@
 {
   # The version of these settings a host has. install.sh reads it: keep it equal to the
   # installer's NIXOS_PREINSTALL_VERSION, and raise both when a setting is added.
-  environment.etc."provisa/nixos-preinstall".text = "1\n";
+  environment.etc."provisa/nixos-preinstall".text = "3\n";
 
   # Nothing prebuilt finds a loader or a library at an FHS path on NixOS, so the Python runtime,
   # its wheels' native modules, the embedded PostgreSQL and Chromium all load through nix-ld.
@@ -28,6 +28,8 @@
       unixodbc
       # The embedded PostgreSQL's sqlite_fdw.
       sqlite
+      # The embedded PostgreSQL's pg_clickhouse (run 45720472876: liblz4.so.1 not found).
+      lz4
       # Playwright's Chromium.
       glib
       nss
@@ -40,6 +42,10 @@
       libxkbcommon
       libgbm
       pango
+      # The pango above needs its own harfbuzz: node-canvas (the graph renderer) bundles an older
+      # libharfbuzz.so.0, and without this one the loader bound pango to it (run 45903556292:
+      # libpango-1.0.so.0: undefined symbol: hb_ot_color_has_paint).
+      harfbuzz
       cairo
       alsa-lib
       systemd

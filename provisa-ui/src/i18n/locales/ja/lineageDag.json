@@ -2,6 +2,19 @@
   "lineageDag": {
     "job": "OpenLineage ジョブ",
     "outsideModel": "モデル外",
-    "reportedEdge": "OpenLineage による報告"
+    "reportedEdge": "OpenLineage による報告",
+    "columns_one": "{{count}} 列",
+    "columns_other": "{{count}} 列",
+    "unused": "+{{count}} 未使用",
+    "materialized": "マテリアライズ済み",
+    "feedbackCycle": "フィードバックサイクル内",
+    "errorCycle": "エラーのサイクル内",
+    "clickToExpand": "クリックして展開",
+    "clickToCollapse": "クリックして折りたたむ",
+    "doubleClickToOpen": "ダブルクリックで開く",
+    "expandAll": "すべてのデータセットを展開",
+    "collapseAll": "すべてのデータセットを折りたたむ",
+    "enlarge": "拡大",
+    "stats": "{{columns}} 列 · {{edges}} エッジ"
   }
 }

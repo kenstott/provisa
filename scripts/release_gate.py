@@ -11,8 +11,21 @@
 """The release gate of a cut (REQ-1989): which runs a release needs on its commit, and what a
 run that is not green does to it.
 
-Run by "Release: cut" (.github/workflows/release-cut.yml). A run counts only on this commit of
-this branch, whatever event started it (a push or a dispatch): failed, cancelled, running or never run is not green.
+Run by "Release: cut" (.github/workflows/release-cut.yml). A run counts on this commit of this
+branch, whatever event started it (a push or a dispatch): failed, cancelled, running or never run is
+not green. A workflow with no green run on this commit takes the newest green run of it on this
+branch at an ancestor commit A, when every commit in A..this commit is one of (REQ-1989, amended
+2026-11-27: a documentation-only change needs no retest, a fix runs only its own targeted tests):
+
+- documentation only (docs/**, *.md, mkdocs.yml), or a change to ``ACCEPTS_PATH`` alone, which
+  records proof and runs nothing;
+- a clean merge, whose own combined diff is empty: the commits it brings in are judged one by one;
+- listed in ``ACCEPTS_PATH`` with the targeted runs that proved it, every one of them completed
+  successfully on the commit the entry names (the commit itself, a release commit containing it,
+  or the fix branch's own commit the release took in).
+
+Anything else leaves the workflow not green. Each accepted run is named in ``--out`` with its
+commit and why every later commit is covered; the cut appends that file to the release's notes.
 
 - A beta or production release (any version without ``-alpha.``) ships at zero bugs: one run not
   green refuses the cut, by name, exiting 2.
@@ -35,6 +48,7 @@ only when every one is green, naming the commit a release may be cut from; anyth
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess  # nosec B404 - argv-list gh invocations only, never shell=True
 import sys
 from pathlib import Path
@@ -87,6 +101,12 @@ NIGHTLY_LANES: dict[str, tuple[str, ...]] = {
     "packaging": ("build-dmg.yml", "build-duckdb-extensions.yml"),
 }
 _GREEN = "completed success "
+#: The repository the cut runs in: its history decides which commits an accepted run covers.
+ROOT = Path(__file__).resolve().parents[1]
+#: Each code commit of a release since its suites last ran, mapped to the targeted runs that
+#: proved it: ``{"commits": {<sha>: {"tested_sha": <sha>, "runs": [<id>...], "reason": <text>}}}``.
+ACCEPTS_PATH = ".github/release-gate-accepts.json"
+_DOC_FILES = ("mkdocs.yml",)
 _JQ = '.[0] // {} | "\\(.status // "never run") \\(.conclusion // "") \\(.url // "")"'
 
 
@@ -132,6 +152,146 @@ def run_state(workflow: str, branch: str, sha: str) -> str:
     if done.returncode != 0:
         raise LookupFailed(f"gh run list --workflow {workflow}: {done.stderr.strip()}")
     return done.stdout.strip()
+
+
+def _gh_json(argv: list[str]) -> object:
+    done = subprocess.run(argv, capture_output=True, text=True)  # nosec B603 B607 - fixed gh argv
+    if done.returncode != 0:
+        raise LookupFailed(f"{' '.join(argv[:3])}: {done.stderr.strip()}")
+    return json.loads(done.stdout)
+
+
+def successful_runs(workflow: str, branch: str) -> list[dict]:
+    """The workflow's successful runs on the branch, newest first."""
+    runs = _gh_json(
+        [
+            "gh",
+            "run",
+            "list",
+            "--workflow",
+            workflow,
+            "--branch",
+            branch,
+            "--status",
+            "success",
+            "--limit",
+            "100",
+            "--json",
+            "databaseId,headSha,url",
+        ]
+    )
+    assert isinstance(runs, list)
+    return runs
+
+
+def run_view(run_id: int) -> dict:
+    view = _gh_json(
+        ["gh", "run", "view", str(run_id), "--json", "status,conclusion,headSha,url,workflowName"]
+    )
+    assert isinstance(view, dict)
+    return view
+
+
+def _git(repo: Path, *args: str) -> str:
+    done = subprocess.run(  # nosec B603 B607 - fixed git argv, no shell
+        ["git", "-C", str(repo), *args], capture_output=True, text=True
+    )
+    if done.returncode != 0:
+        raise LookupFailed(f"git {' '.join(args)}: {done.stderr.strip()}")
+    return done.stdout
+
+
+def _is_ancestor(repo: Path, ancestor: str, sha: str) -> bool:
+    """Whether ``ancestor`` is in ``sha``'s history. The cut checks out the whole history, so a
+    commit this checkout lacks (a run on a commit since rewritten away) is in no history of it."""
+    known = subprocess.run(  # nosec B603 B607 - fixed git argv, no shell
+        ["git", "-C", str(repo), "cat-file", "-e", f"{ancestor}^{{commit}}"], capture_output=True
+    )
+    if known.returncode != 0:
+        return False
+    done = subprocess.run(  # nosec B603 B607 - fixed git argv, no shell
+        ["git", "-C", str(repo), "merge-base", "--is-ancestor", ancestor, sha],
+        capture_output=True,
+        text=True,
+    )
+    if done.returncode not in (0, 1):
+        raise LookupFailed(f"git merge-base --is-ancestor {ancestor} {sha}: {done.stderr.strip()}")
+    return done.returncode == 0
+
+
+def load_accepts(repo: Path) -> dict[str, dict]:
+    return json.loads((repo / ACCEPTS_PATH).read_text())["commits"]
+
+
+def _is_doc(path: str) -> bool:
+    return path.startswith("docs/") or path.endswith(".md") or path in _DOC_FILES
+
+
+def _changed(repo: Path, commit: str) -> tuple[bool, list[str]]:
+    """Whether ``commit`` is a merge, and the files it changes itself: a merge's combined diff,
+    which is empty when it only brings in other commits."""
+    parents = _git(repo, "rev-list", "--parents", "-n", "1", commit).split()[1:]
+    if len(parents) > 1:
+        return True, _git(repo, "show", "--cc", "--format=", "--name-only", commit).splitlines()
+    files = _git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", commit)
+    return False, files.splitlines()
+
+
+def commit_cover(
+    repo: Path, commit: str, accepts: dict[str, dict], views: dict[int, dict]
+) -> tuple[bool, str]:
+    """Whether ``commit`` needs no rerun of a suite that last ran before it, and why (or why not)."""
+    merge, files = _changed(repo, commit)
+    files = [f for f in files if f]
+    if merge and not files:
+        return True, "clean merge: the commits it brings in are judged one by one"
+    if all(_is_doc(f) for f in files):
+        return True, "documentation only"
+    if all(_is_doc(f) or f == ACCEPTS_PATH for f in files):
+        return True, f"changes only {ACCEPTS_PATH} (and documentation)"
+    entry = accepts.get(commit)
+    if entry is None:
+        return False, f"changes code and is not listed in {ACCEPTS_PATH}"
+    tested = entry["tested_sha"]
+    if not entry["runs"]:
+        return False, f"its {ACCEPTS_PATH} entry lists no runs"
+    for run_id in entry["runs"]:
+        if run_id not in views:
+            views[run_id] = run_view(run_id)
+        view = views[run_id]
+        if (view["status"], view["conclusion"]) != ("completed", "success"):
+            return False, f"targeted run {view['url']} is {view['status']} {view['conclusion']}"
+        if view["headSha"] != tested:
+            return (
+                False,
+                f"targeted run {view['url']} ran on {view['headSha'][:10]}, not {tested[:10]}",
+            )
+    ids = ", ".join(str(r) for r in entry["runs"])
+    return True, f"targeted runs {ids} green on {tested[:10]}: {entry['reason']}"
+
+
+def ancestor_run(
+    repo: Path,
+    workflow: str,
+    branch: str,
+    sha: str,
+    accepts: dict[str, dict],
+    views: dict[int, dict],
+) -> tuple[dict | None, str]:
+    """The newest green run of ``workflow`` on ``branch`` at a proper ancestor of ``sha`` whose
+    later commits all need no rerun, with each commit's reason; or None and why not."""
+    for run in successful_runs(workflow, branch):
+        base = run["headSha"]
+        if base == sha or not _is_ancestor(repo, base, sha):
+            continue
+        covered = []
+        for commit in _git(repo, "rev-list", "--reverse", f"{base}..{sha}").split():
+            ok, why = commit_cover(repo, commit, accepts, views)
+            if not ok:
+                return None, f"newest green run {run['url']} is on {base[:10]}; {commit[:10]} {why}"
+            covered.append((commit, why))
+        return {"url": run["url"], "sha": base, "commits": covered}, ""
+    return None, f"no green run on an ancestor of {sha[:10]} on {branch}"
 
 
 def _dispatch_inputs(workflow: str, version: str) -> list[str]:
@@ -203,13 +363,49 @@ def _listing(failures: list[tuple[str, str]], sha: str) -> str:
     return f"\n## Known failures\n\nThis alpha shipped with these not green on {sha}:\n\n{lines}"
 
 
+def _accepted_listing(accepted: list[tuple[str, dict]], sha: str) -> str:
+    lines = ""
+    for workflow, found in accepted:
+        lines += f"- `{workflow}`: {found['url']} on `{found['sha'][:10]}`\n"
+        lines += "".join(f"  - `{c[:10]}`: {why}\n" for c, why in found["commits"])
+    return (
+        "\n## Runs accepted from an earlier commit\n\n"
+        f"These last ran green on an earlier commit than {sha}; every commit since is covered:"
+        f"\n\n{lines}"
+    )
+
+
+def _judge(
+    version: str, branch: str, sha: str
+) -> tuple[list[tuple[str, dict]], list[tuple[str, str]]]:
+    """Each gated workflow green on ``sha``, accepted from an ancestor, or failed with why."""
+    accepted: list[tuple[str, dict]] = []
+    failures: list[tuple[str, str]] = []
+    accepts: dict[str, dict] | None = None
+    views: dict[int, dict] = {}
+    for workflow in gates(version):
+        state = run_state(workflow, branch, sha)
+        if state.startswith(_GREEN):
+            continue
+        if accepts is None:
+            accepts = load_accepts(ROOT)
+        found, why = ancestor_run(ROOT, workflow, branch, sha, accepts, views)
+        if found is None:
+            failures.append((workflow, f"{state}; {why}"))
+        else:
+            accepted.append((workflow, found))
+    return accepted, failures
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Gate a release on its runs.")
     parser.add_argument("--version", help="the release tag being cut, or the next one's number")
     parser.add_argument("--list", action="store_true", help="print the version's workflows")
     parser.add_argument("--branch", help="the release branch")
     parser.add_argument("--sha", help="the commit being cut")
-    parser.add_argument("--out", type=Path, help="where an alpha's failures are written")
+    parser.add_argument(
+        "--out", type=Path, help="where accepted runs and an alpha's failures are written"
+    )
     parser.add_argument(
         "--nightly-dispatch", action="store_true", help="start the nightly lanes on main's pin"
     )
@@ -229,18 +425,24 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.branch and args.sha and args.out):
         parser.error("--branch, --sha and --out are required unless --list is given")
     try:
-        states = [(w, run_state(w, args.branch, args.sha)) for w in gates(args.version)]
+        accepted, failures = _judge(args.version, args.branch, args.sha)
     except LookupFailed as failed:
         print(f"::error::{failed}")
         return 1
-    failures = [(w, state) for w, state in states if not state.startswith(_GREEN)]
+    for workflow, found in accepted:
+        print(f"::notice::{workflow} accepted from {found['url']} on {found['sha'][:10]}")
+        for commit, why in found["commits"]:
+            print(f"  {commit[:10]}: {why}")
+    accepted_text = _accepted_listing(accepted, args.sha) if accepted else ""
     if not failures:
+        if accepted:
+            args.out.write_text(accepted_text)
         return 0
     where = f"on {args.branch} at {args.sha}"
     if is_alpha(args.version) and all(workflow != _PACKAGING for workflow, _ in failures):
         for workflow, state in failures:
             print(f"::warning::{workflow} is not green {where}: {state}")
-        args.out.write_text(_listing(failures, args.sha))
+        args.out.write_text(accepted_text + _listing(failures, args.sha))
         return 0
     for workflow, state in failures:
         print(f"::error::{workflow} is not green {where}: {state}")

@@ -160,8 +160,9 @@ LANES: dict[str, Lane] = {
     # about 2,450 API calls of an org allowed 15,000 a day. The live Microsoft 365 tests run only
     # in their own on-demand lane (microsoft_365), against the maintainer's tenant (maintainer
     # 2026-11-10); the warehouse lane, whose job holds no M365 secrets, leaves them out.
-    # The live Google Workspace test is in no CI lane at all: its domain is the maintainer's own.
-    # Nor is the live QuickBooks test: its sandbox company is the maintainer's own too.
+    # The live Google Workspace tests run only in their own on-demand lane (google_workspace),
+    # against the maintainer's domain (maintainer 2026-11-26), never nightly.
+    # The live QuickBooks test is in no CI lane at all: its sandbox company is the maintainer's own.
     # Nor is the live Shopify test: its dev store is the maintainer's own too.
     "warehouse": Lane(
         ("tests/integration", "tests/steps"),
@@ -184,6 +185,12 @@ LANES: dict[str, Lane] = {
     # its own job. The tests drive the loader directly, so the job runs them with no stack.
     "microsoft_365": Lane(
         ("tests/integration", "tests/steps"), "requires_microsoft_365", clear_addopts=True
+    ),
+    # The live Google Workspace domain (REQ-2280; maintainer 2026-11-26): on demand only
+    # (include_google_workspace), its own job, like microsoft_365. A service account with
+    # domain-wide delegation acts as the domain's test user; no stack is brought up.
+    "google_workspace": Lane(
+        ("tests/integration", "tests/steps"), "requires_google_workspace", clear_addopts=True
     ),
     # REQ-2006: a visitor's walk through one published demo, served from the bundle demo-bundles.yml
     # just built (PROVISA_TEST_DEMO_BUNDLES_DIR), before it is published: that job runs it with the
@@ -282,7 +289,7 @@ ON_DEMAND = ("leak",)
 # The lanes a dispatch of integration-suite.yml can run, beside the suite matrix: each its own job.
 # A live lane runs only when the dispatch includes it (its include_<lane> input).
 OWN_JOBS = ("cluster",)
-LIVE = ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365")
+LIVE = ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365", "google_workspace")
 # Lanes another workflow runs, with what they need that no integration-suite.yml dispatch has: a
 # targeted run naming a test only they select is refused, saying where it runs.
 ELSEWHERE = {
@@ -296,7 +303,6 @@ ELSEWHERE = {
 # one of these, and over no other: a new test that no lane selects and none of these marks fails it.
 NO_CI_LANE: dict[str, str] = {
     "packaging": "scripts/test-all, with TEST_ALL_PACKAGING=1 (its packaging lane)",
-    "requires_google_workspace": "by hand, against the maintainer's own Google Workspace domain",
     "requires_quickbooks": "by hand, against the maintainer's own QuickBooks sandbox company",
     "requires_shopify": "by hand, against the maintainer's own Shopify dev store",
     "requires_fabric": "nowhere until the CI service principal has Admin on the Fabric workspace (maintainer 2026-11-11)",
@@ -672,13 +678,18 @@ def targets(lane_name: str, shard_spec: str | None) -> list[str]:
     return shard(test_files(lane.paths), index, total)
 
 
-def budget_s(lane_name: str) -> int | None:
+def budget_s(lane_name: str, job_minutes: int | None = None) -> int | None:
     """How long a suite lane's tests may start for (tests/lane_budget.py): its job limit less the
     job's other steps and one test's bound, so the last test started ends, and the lane fails with
-    its report, before the job limit cancels it with none. None for a lane not in the suite matrix."""
+    its report, before the job limit cancels it with none. None for a lane not in the suite matrix.
+
+    ``job_minutes`` is the limit of a job a workflow planned itself (--job-minutes): the NixOS
+    workflow raises each lane's limit for its guest, and a budget read from the suite's own limit
+    stopped core 6/21 with 25 tests not run (run 45912217581)."""
     if lane_name not in SUITE:
         return None
-    return SUITE[lane_name][1] * 60 - JOB_STEPS_S - TEST_TIMEOUT_S
+    minutes = SUITE[lane_name][1] if job_minutes is None else job_minutes
+    return minutes * 60 - JOB_STEPS_S - TEST_TIMEOUT_S
 
 
 def _under(path: str, roots: tuple[str, ...]) -> bool:
@@ -751,13 +762,18 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("lane", choices=sorted(LANES))
     parser.add_argument("--shard", help="K/N: the Kth of N file shards of the lane")
+    parser.add_argument(
+        "--job-minutes",
+        type=int,
+        help="the job's limit when its workflow planned it, not the suite (budget_s)",
+    )
     args, extra = parser.parse_known_args(argv)
     if named_tests() and not targets(args.lane, args.shard):
         print(f"targeted run: no named test is in lane {args.lane}; nothing to run", flush=True)
         return 0
     cmd = command(args.lane, args.shard, extra)
     env = os.environ.copy()
-    budget = budget_s(args.lane)
+    budget = budget_s(args.lane, args.job_minutes)
     deadline = None
     if budget is not None:
         deadline = time.time() + budget

@@ -1382,7 +1382,7 @@ def _propagate_into_correlated_subqueries(
     return changed
 
 
-def _read_keys(join: exp.Join) -> list[tuple[exp.Column, exp.Column]] | None:
+def read_keys(join: exp.Join) -> list[tuple[exp.Column, exp.Column]] | None:
     """(the read's key column, the outer column it equals) for each conjunct of a grouped read's
     LEFT JOIN (``sql_selection.rel_read``: ``ON r._key0 = t0.k AND ...``); None for any other
     join."""
@@ -1410,7 +1410,7 @@ def _read_keys(join: exp.Join) -> list[tuple[exp.Column, exp.Column]] | None:
     return pairs
 
 
-def _keyed_select(read: exp.Select, key: str) -> tuple[exp.Select, exp.Expr] | None:
+def keyed_select(read: exp.Select, key: str) -> tuple[exp.Select, exp.Expr] | None:
     """The SELECT of ``read`` (a grouped read) that names ``key`` of a column of its own rows,
     and that column: the read itself, or the numbered rows it reads (READ_ROWS)."""
     for select in read.find_all(exp.Select):
@@ -1477,7 +1477,7 @@ def _propagate_into_reads(
         if not literal_preds:
             continue
         for join in outer.args.get("joins") or []:
-            pairs = _read_keys(join)
+            pairs = read_keys(join)
             read = join.this.this if pairs is not None else None
             if pairs is None or not isinstance(read, exp.Select):
                 continue
@@ -1486,7 +1486,7 @@ def _propagate_into_reads(
                 preds = literal_preds.get((outer_alias, outer_col.name.lower()))
                 if not preds:
                     continue
-                keyed = _keyed_select(read, read_key.name)
+                keyed = keyed_select(read, read_key.name)
                 if keyed is None:
                     continue
                 rows, inner_col = keyed

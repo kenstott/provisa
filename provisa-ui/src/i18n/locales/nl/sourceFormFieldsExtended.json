@@ -235,6 +235,13 @@
     "qbSignIn": "Aanmelden met QuickBooks",
     "qbSignedIn": "Aangemeld bij bedrijf {{realm}}. Sla de bron op om dit te bewaren.",
     "qbSignInFailed": "Het inloggen kon niet worden voltooid.",
-    "wikidataEndpointHint": "De Wikidata-querydienst. Geen inloggegevens; tabellen worden dagelijks vernieuwd."
+    "wikidataEndpointHint": "De Wikidata-querydienst. Geen inloggegevens; tabellen worden dagelijks vernieuwd.",
+    "gdriveAuth_service_account": "Serviceaccount",
+    "gdriveAuth_oauth": "OAuth (vernieuwingstoken)",
+    "gdriveServiceAccountKey": "Serviceaccountsleutel (JSON)",
+    "gdriveServiceAccountKeyHint": "Deel de map met het e-mailadres van het serviceaccount: een serviceaccount heeft geen eigen opslag.",
+    "gdriveRefreshToken": "Vernieuwingstoken",
+    "gdriveSubject": "Handelt als gebruiker (optioneel)",
+    "gdriveSubjectHint": "Met domeinbrede delegatie leest het serviceaccount de Drive van deze Workspace-gebruiker. Laat leeg om als het serviceaccount zelf te lezen."
   }
 }

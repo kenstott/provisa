@@ -207,7 +207,7 @@ async def test_can_probe_says_what_build_probe_can_ask_for(
         asked.append("sql")
         return 1
 
-    async def glob_token(_path: str, _glob: str):
+    async def glob_token(_path: str, _glob: str, _storage_options):
         asked.append("glob")
         return "g"
 

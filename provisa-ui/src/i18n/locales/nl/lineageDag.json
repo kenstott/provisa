@@ -2,6 +2,19 @@
   "lineageDag": {
     "job": "OpenLineage-taak",
     "outsideModel": "buiten het model",
-    "reportedEdge": "gemeld door OpenLineage"
+    "reportedEdge": "gemeld door OpenLineage",
+    "columns_one": "{{count}} kolom",
+    "columns_other": "{{count}} kolommen",
+    "unused": "+{{count}} ongebruikt",
+    "materialized": "gematerialiseerd",
+    "feedbackCycle": "in een terugkoppelingslus",
+    "errorCycle": "in een foutieve lus",
+    "clickToExpand": "Klik om uit te vouwen",
+    "clickToCollapse": "Klik om samen te vouwen",
+    "doubleClickToOpen": "dubbelklik om te openen",
+    "expandAll": "Alle datasets uitvouwen",
+    "collapseAll": "Alle datasets samenvouwen",
+    "enlarge": "Vergroten",
+    "stats": "{{columns}} kolommen · {{edges}} lijnen"
   }
 }
