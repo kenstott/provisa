@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A Cypher query handed to the graph explorer with autoRun (NL "Open in Cypher", Polly) runs,
-// whether the page was just opened or was already open.
+// A Cypher query handed to the graph explorer (NL "Open in Cypher", Polly) runs, with no flag
+// asking it to (maintainer 2026-11-28), whether the page was just opened or was already open.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -46,7 +46,7 @@ function Polly() {
   return (
     <button
       onClick={() =>
-        navigate("/graph", { state: { query: "MATCH (n) RETURN n LIMIT 1", autoRun: true } })
+        navigate("/graph", { state: { query: "MATCH (n) RETURN n LIMIT 1" } })
       }
     >
       polly

@@ -399,7 +399,7 @@ describe("ChatPanel — what Polly hands over: a drawn graph, a file", () => {
     expect(download.getAttribute("href")).toBe("data:image/png;base64,iVBORw0KGgo=");
     expect(download.getAttribute("download")).toBe("graph.png");
     fireEvent.click(screen.getByTestId("chat-graph-open"));
-    expect(navigate).toHaveBeenCalledWith("/graph", { state: { query: cypher, autoRun: true } });
+    expect(navigate).toHaveBeenCalledWith("/graph", { state: { query: cypher } });
 
     const file = screen.getByTestId("result-redirected");
     expect(file.querySelector("a")!.getAttribute("href")).toBe(

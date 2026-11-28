@@ -147,7 +147,7 @@ describe("a command's call on each surface", () => {
     });
     expect(link).toEqual({
       to: "/graph",
-      state: { query: `CALL enrich_grpc_set('[{"id":1},{"id":2}]', 'it\\'s')`, autoRun: true },
+      state: { query: `CALL enrich_grpc_set('[{"id":1},{"id":2}]', 'it\\'s')` },
     });
   });
 
@@ -203,10 +203,17 @@ describe("a command that writes", () => {
   };
   const given = { order_id: { kind: "scalar", value: 7 } } as Record<string, ArgValue>;
 
-  it("opens on every surface without running", () => {
-    for (const surface of commandSurfaces(served, reader)) {
+  it("opens on every surface but Cypher without running", () => {
+    for (const surface of commandSurfaces(served, reader).filter((s) => s !== "cypher")) {
       expect(commandQueryLink(surface, REFUND, served, reader, given).state.autoRun).toBe(false);
     }
+  });
+
+  it("Cypher: held as a write, so the Graph page opens it unrun (REQ-1159)", () => {
+    expect(commandQueryLink("cypher", REFUND, served, reader, given)).toEqual({
+      to: "/graph",
+      state: { query: "CALL refund_order(7)", hold: "write" },
+    });
   });
 
   it("GraphQL: a mutation, with no selection for a scalar answer", () => {

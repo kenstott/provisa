@@ -102,7 +102,6 @@ describe("GraphPage: the view a navigation asks for", () => {
   it("gives the query's frame its group by, collapse and layout, and sets max nodes", async () => {
     renderPage({
       query: "MATCH (c:Shop:Customers) RETURN c LIMIT 25",
-      autoRun: true,
       view: { groupBy: "region", collapseGroups: true, layout: "hierarchy", maxNodes: 120 },
     });
     act(() => screen.getByText("polly 0").click());
@@ -118,7 +117,7 @@ describe("GraphPage: the view a navigation asks for", () => {
 
   it("sets the view of the graph on screen without changing or rerunning its query", async () => {
     renderPage(
-      { query: "MATCH (c:Shop:Customers) RETURN c LIMIT 25", autoRun: true },
+      { query: "MATCH (c:Shop:Customers) RETURN c LIMIT 25" },
       { view: { groupBy: "region" } },
     );
     act(() => screen.getByText("polly 0").click());

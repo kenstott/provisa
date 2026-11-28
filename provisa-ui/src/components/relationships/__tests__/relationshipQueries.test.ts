@@ -350,7 +350,10 @@ describe("relationshipQueryLinks", () => {
       "/grpc",
       "/jsonapi",
     ]);
-    expect(links.every((l) => l.link.state.autoRun === true)).toBe(true);
+    // The Graph page (Cypher, SPARQL) runs every query it is handed; the others are asked to.
+    const graph = (to: string) => to === "/graph" || to === "/sparql";
+    expect(links.every((l) => !graph(l.link.to) || !("autoRun" in l.link.state))).toBe(true);
+    expect(links.every((l) => graph(l.link.to) || l.link.state.autoRun === true)).toBe(true);
     expect(links[1].link.state.sql).toContain("join");
     expect(links[4].link.state.openApiUrl).toContain("fields=id,customerId,client");
     expect(links[5].link.state).toEqual({

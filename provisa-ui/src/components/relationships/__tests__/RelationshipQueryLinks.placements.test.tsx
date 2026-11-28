@@ -214,7 +214,6 @@ describe("the relationship detail panel", () => {
       to: "/graph",
       state: {
         query: "MATCH (a:Orders)-[r:PLACED_BY]->(b:Clients) RETURN a, r, b LIMIT 25",
-        autoRun: true,
       },
     });
   });
@@ -344,7 +343,7 @@ describe("the data product Access section", () => {
     );
     const { to, state } = opened();
     expect(to).toBe("/sparql");
-    expect(state.autoRun).toBe(true);
+    expect(state).not.toHaveProperty("autoRun");
     expect(state.query).toContain("?s a sales:orders . ?s rel:PLACED_BY ?o . ?o a sales:clients .");
   });
 });

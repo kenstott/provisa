@@ -71,7 +71,7 @@ const NODE = (id: number) => ({
 function Run({ query }: { query: string }) {
   const navigate = useNavigate();
   return (
-    <button onClick={() => navigate("/graph", { state: { query, autoRun: true } })}>run</button>
+    <button onClick={() => navigate("/graph", { state: { query } })}>run</button>
   );
 }
 

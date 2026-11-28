@@ -23,6 +23,7 @@
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import { parameterName } from "../nativeParams";
+import { explorerHandoff, type ExplorerHold } from "../../lib/explorerHandoff";
 import { allPrefixes, compactIri, withUsedPrefixes, type SparqlVocabulary } from "../graph/sparql";
 import { grpcExample, grpcMethod } from "../../pages/data-products/tableExamples";
 import {
@@ -175,14 +176,24 @@ export function tableQueryLinks(
   surfaces: RelationshipSurfaces,
 ): { surface: RelationshipSurface; link: QueryLink }[] {
   const { reader, graph, vocabulary } = surfaces;
-  const autoRun = parametersOf(tb).length === 0;
-  const run = (to: string, key: string, text: string | null): QueryLink | null =>
-    text === null ? null : { to, state: { [key]: text, autoRun } };
+  // A query carrying the table's parameter placeholders opens unrun for the user to fill them
+  // (REQ-1159, REQ-2252).
+  const params = parametersOf(tb).length > 0 ? "parameters" : null;
+  const run = (
+    to: string,
+    key: string,
+    text: string | null,
+    hold: ExplorerHold | null = params,
+  ): QueryLink | null =>
+    text === null ? null : { to, state: explorerHandoff(to, { [key]: text }, hold) };
   const built: Record<RelationshipSurface, QueryLink | null> = {
     cypher: graph ? run("/graph", "query", tableCypher(tb, graph)) : null,
     sql: reader ? run("/sql", "sql", tableSql(tb, reader)) : null,
+    // tableSparql writes no parameter placeholders, so nothing holds it.
     sparql:
-      graph && vocabulary ? run("/sparql", "query", tableSparql(tb, graph, vocabulary)) : null,
+      graph && vocabulary
+        ? run("/sparql", "query", tableSparql(tb, graph, vocabulary), null)
+        : null,
     graphql: reader ? run("/query", "query", tableGraphql(tb, reader)) : null,
     rest: reader ? run("/openapi", "openApiUrl", tableRest(tb, reader)) : null,
     grpc: reader ? tableGrpc(tb, reader) : null,
@@ -352,7 +363,7 @@ export function tableAggregateLinks(
 ): { surface: RelationshipSurface; link: QueryLink }[] {
   const { reader, graph, vocabulary } = surfaces;
   const run = (to: string, key: string, text: string | null): QueryLink | null =>
-    text === null ? null : { to, state: { [key]: text, autoRun: true } };
+    text === null ? null : { to, state: explorerHandoff(to, { [key]: text }, null) };
   const built: Record<RelationshipSurface, QueryLink | null> = {
     cypher: graph ? run("/graph", "query", tableAggregateCypher(tb, graph)) : null,
     sql: reader ? run("/sql", "sql", tableAggregateSql(tb, reader)) : null,
