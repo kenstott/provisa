@@ -45,7 +45,13 @@ vi.mock("../../context/AuthContext", () => ({
     userId: "vera",
     role: { id: "vet_lead", capabilities: [] },
     selectedRoles: [
-      { id: "vet_lead", parents: ["care_owner"], effectiveCapabilities: [], domain_access: [] },
+      {
+        id: "vet_lead",
+        parents: ["care_owner"],
+        // REQ-1659: product read in the products' domains, so both are listed.
+        effectiveCapabilities: ["data_product_read"],
+        domain_access: ["care", "ops"],
+      },
     ],
     availableRoles: [{ id: "vet_lead", parents: ["care_owner"] }],
   }),

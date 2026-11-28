@@ -311,8 +311,6 @@
     "tagFacetLabel": "Etiquetas",
     "tagFacetPlaceholder": "Filtrar por etiqueta",
     "noMatch": "Ningún producto de datos coincide con los filtros",
-    "domainFacetLabel": "Dominios",
-    "domainFacetPlaceholder": "Filtrar por dominio",
     "colSync": "Sincronización",
     "syncNone": "Sin sincronizar",
     "syncSynced_one": "Sincronizado",

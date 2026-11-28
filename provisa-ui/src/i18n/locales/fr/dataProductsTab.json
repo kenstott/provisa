@@ -311,8 +311,6 @@
     "tagFacetLabel": "Tags",
     "tagFacetPlaceholder": "Filtrer par tag",
     "noMatch": "Aucun produit de données ne correspond aux filtres",
-    "domainFacetLabel": "Domaines",
-    "domainFacetPlaceholder": "Filtrer par domaine",
     "colSync": "Synchronisation",
     "syncNone": "Non synchronisé",
     "syncSynced_one": "Synchronisé",

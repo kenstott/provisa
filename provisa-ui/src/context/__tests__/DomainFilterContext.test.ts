@@ -9,7 +9,11 @@
 
 import { beforeEach, describe, it, expect } from "vitest";
 import { mergeCheckedDomains, restoreCheckedDomains } from "../DomainFilterContext";
-import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../../lib/domainFilterKeys";
+import {
+  CHECKED_DOMAINS_KEY,
+  KNOWN_DOMAINS_KEY,
+  ROLE_DOMAIN_KEYS,
+} from "../../lib/domainFilterKeys";
 import { storageKey as scopedKey } from "../../lib/browserStorage";
 
 describe("mergeCheckedDomains", () => {
@@ -55,21 +59,21 @@ describe("restoreCheckedDomains across page loads", () => {
   });
 
   it("keeps a new demo's domain checked on every load, not only the first", () => {
-    expect(restoreCheckedDomains(WEBLOGS)).toEqual(new Set(WEBLOGS));
+    expect(restoreCheckedDomains(WEBLOGS, ROLE_DOMAIN_KEYS)).toEqual(new Set(WEBLOGS));
     // The reload: shop is known now, and must still be checked -- it was never unchecked.
-    expect(restoreCheckedDomains(WEBLOGS)).toEqual(new Set(WEBLOGS));
+    expect(restoreCheckedDomains(WEBLOGS, ROLE_DOMAIN_KEYS)).toEqual(new Set(WEBLOGS));
   });
 
   it("still keeps a domain the user unchecked unchecked across loads", () => {
-    restoreCheckedDomains(WEBLOGS);
+    restoreCheckedDomains(WEBLOGS, ROLE_DOMAIN_KEYS);
     const unchecked = WEBLOGS.filter((d) => d !== "ops");
     localStorage.setItem(scopedKey(CHECKED_DOMAINS_KEY), JSON.stringify(unchecked)); // toggleDomain("ops")
-    expect(restoreCheckedDomains(WEBLOGS)).toEqual(new Set(unchecked));
-    expect(restoreCheckedDomains(WEBLOGS)).toEqual(new Set(unchecked));
+    expect(restoreCheckedDomains(WEBLOGS, ROLE_DOMAIN_KEYS)).toEqual(new Set(unchecked));
+    expect(restoreCheckedDomains(WEBLOGS, ROLE_DOMAIN_KEYS)).toEqual(new Set(unchecked));
   });
 
   it("checks the first demo's domains again when it comes back", () => {
-    restoreCheckedDomains(WEBLOGS);
-    expect(restoreCheckedDomains(PET_STORE)).toEqual(new Set(PET_STORE));
+    restoreCheckedDomains(WEBLOGS, ROLE_DOMAIN_KEYS);
+    expect(restoreCheckedDomains(PET_STORE, ROLE_DOMAIN_KEYS)).toEqual(new Set(PET_STORE));
   });
 });

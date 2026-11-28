@@ -311,8 +311,6 @@
     "tagFacetLabel": "टैग",
     "tagFacetPlaceholder": "टैग से फ़िल्टर करें",
     "noMatch": "फ़िल्टर से कोई डेटा प्रोडक्ट मेल नहीं खाता",
-    "domainFacetLabel": "डोमेन",
-    "domainFacetPlaceholder": "डोमेन से फ़िल्टर करें",
     "colSync": "सिंक",
     "syncNone": "सिंक नहीं हुआ",
     "syncSynced_one": "सिंक हुआ",

@@ -311,8 +311,6 @@
     "tagFacetLabel": "Теги",
     "tagFacetPlaceholder": "Фильтр по тегу",
     "noMatch": "Нет продуктов данных, соответствующих фильтрам",
-    "domainFacetLabel": "Домены",
-    "domainFacetPlaceholder": "Фильтр по домену",
     "colSync": "Синхронизация",
     "syncNone": "Не синхронизирован",
     "syncSynced_one": "Синхронизирован",
