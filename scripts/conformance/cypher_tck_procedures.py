@@ -181,7 +181,7 @@ def command(proc: Procedure, roles: tuple[str, ...]) -> dict:
 
 # --- declaring a procedure ---------------------------------------------------------------------
 
-#: The instance, its fixture model as it booted, the break-glass account that puts a model and
+#: The instance, its fixture model, the instance's org_admin that puts a model and
 #: the roles a command is assigned to (main sets them); the procedure the model holds now.
 _MODEL: dict[str, Any] = {}
 

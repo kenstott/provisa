@@ -245,6 +245,7 @@ def _nodes_column(
     table: TableMeta,
     variables: dict | None,
     use_catalog: bool,
+    collector: ParamCollector,
 ) -> tuple[str, ColumnRef, str | None, StatementSources] | None:
     """An _aggregate / _group_by field's ``nodes`` as one column of its own statement: the rows it
     aggregates (a group's, under group-by), each a JSON object of its selected fields --
@@ -308,6 +309,7 @@ def _nodes_column(
                 variables,
                 json_text=json_text,
                 key_prefix=f"{key}.",
+                collector=collector,
             )
             joins.append(read_join)
             json_text.add(key)
@@ -569,7 +571,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         )
 
     # Each group's rows, a column of the group's own row.
-    nodes = _nodes_column(field_node, ctx, table, variables, use_catalog)
+    nodes = _nodes_column(field_node, ctx, table, variables, use_catalog, collector)
     if nodes is not None:
         select_parts.append(nodes[0])
         columns.append(nodes[1])
@@ -712,7 +714,11 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
         )
 
     # The rows it aggregates, a column of its one row.
-    nodes = _nodes_column(field_node, ctx, table, variables, use_catalog) if has_nodes else None
+    nodes = (
+        _nodes_column(field_node, ctx, table, variables, use_catalog, collector)
+        if has_nodes
+        else None
+    )
     if nodes is not None:
         select_parts.append(nodes[0])
         columns.append(nodes[1])

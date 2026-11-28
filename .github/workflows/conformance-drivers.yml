@@ -59,10 +59,8 @@ env:
   CONFORMANCE_PG_DATABASE: conformance
   CONFORMANCE_PG_USER: postgres
   CONFORMANCE_PG_PASSWORD: conformance-pg-password
-  # pgwire's password auth: the break-glass account, the job user and the session signing key.
-  # Ephemeral, on a throwaway instance: not secrets.
-  PROVISA_SUPERUSER_USERNAME: conformance-su
-  PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+  # pgwire's password auth: the job user and the session signing key. Ephemeral, on a throwaway
+  # instance: not secrets. The instance's org_admin is seeded by the instance itself.
   CONFORMANCE_USER: conformance
   CONFORMANCE_PASSWORD: conformance-password
   CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
@@ -123,8 +121,8 @@ jobs:
           password-cost: "4"
 
       # The suite reads build.properties, then build.local.properties over it
-      # (testkit/.../TestUtil.java loadPropertyFiles). There is no superuser on Provisa: the
-      # privileged user is the job user too.
+      # (testkit/.../TestUtil.java loadPropertyFiles). The suite's privileged user is the job
+      # user too.
       - name: Point the suite at Provisa
         run: |
           cat > "$RUNNER_TEMP/pgjdbc/build.local.properties" <<EOF

@@ -22,7 +22,6 @@ import { RoleSchema, rootKey, type Introspection, type MetaReader } from "../../
 import {
   ontologyCountQuery,
   ontologyHopQuery,
-  ontologyOpenedQuery,
   ontologyQuery,
   readsTerms,
   termLevels,
@@ -103,14 +102,14 @@ function ontologyScopes(): [string, QueryScope][] {
 }
 
 /** REQ-2174 (ONE ONTOLOGY GRAPH): the snippets' -- a term's page and a product's panel, in 3D
- * and in lanes, to each depth a reader can pick -- and the whole ontology in lanes. A product's
+ * and in lanes, to each depth a reader can pick, All too -- and the whole ontology in lanes. A product's
  * panel reads by the Product map's rules (ONE GRAPH, RULES PER PRESET), a term's page by the
  * Ontology preset's. */
 function snippetScopes(): [string, QueryScope][] {
   const out: [string, QueryScope][] = [];
   for (const focus of [null, "term:7", "p:1"])
     for (const lanes of [false, true])
-      for (const depth of [1, 2, 3, 4]) {
+      for (const depth of [1, 2, 3, 4, Infinity]) {
         if (focus === null && depth !== 2) continue;
         out.push([
           `focus=${focus ?? "*"} lanes=${lanes} depth=${depth}`,
@@ -199,12 +198,10 @@ function corpus(): Record<string, string> {
   for (const [key, s] of snippetScopes()) {
     add(`ontology snippet: ${key}`, ontologyQuery(m, s));
     add(`ontology snippet count: ${key}`, ontologyCountQuery(m, s));
-    // REQ-2174: each hop past the root, by the ids of the terms it reaches.
-    for (let hop = 1; hop <= termLevels(s); hop++)
-      add(`ontology snippet hop ${hop}: ${key}`, ontologyHopQuery(m, s, hop, [1, 2]));
-    // REQ-2136: what the snippet opens as -- its root and every hop -- in one query.
-    const hops = Array.from({ length: termLevels(s) }, (_, i) => [2 * i + 1, 2 * i + 2]);
-    add(`ontology snippet opened: ${key}`, ontologyOpenedQuery(m, s, hops));
+    // REQ-2174 (amended 2026-11-27): a fixed hop count is the root's reach filter, the query read
+    // and opened; All's walk past its root reads each hop by the ids of the terms it reaches.
+    if (!Number.isFinite(termLevels(s)))
+      add(`ontology snippet hop 1: ${key}`, ontologyHopQuery(m, s, 1, [1, 2]));
   }
   for (const [key, s] of productLayerScopes())
     add(`ontology product layers: ${key}`, ontologyQuery(m, s));
@@ -257,7 +254,8 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
   });
 
   it("reads a term's snippet from the term, and a product's from the terms its tables are", () => {
-    // REQ-2174: the root names the focus; its neighbourhood is read a hop at a time to the depth.
+    // REQ-2174: the root names the focus; its neighbourhood is kept by the root's where to the
+    // depth (amended 2026-11-27), and walked a hop at a time only at All.
     const m = reader();
     const [, base] = snippetScopes()[0];
     const term = ontologyQuery(m, { ...base, focus: "term:7", depth: 2 }) as string;
@@ -272,10 +270,15 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     expect(product).toContain('productId: { eq: "1" }');
     // The product itself is read, that product alone.
     expect(product).toMatch(/m__dataProducts\(where: \{ id: \{ eq: "1" \} \}\)/);
-    // A deeper read reads one more hop, its root the same: no level is nested under another.
-    const deeper = { ...base, focus: "term:7", depth: 3 };
-    expect(ontologyQuery(m, deeper)).toBe(term);
-    const hop = ontologyHopQuery(m, deeper, 3, [1, 2]) as string;
+    // A deeper read reaches one more step in the same root field's where, each term read once.
+    const deeper = ontologyQuery(m, { ...base, focus: "term:7", depth: 3 }) as string;
+    expect(deeper.split("id: { eq: 7 }").length).toBeGreaterThan(term.split("id: { eq: 7 }").length);
+    expect(deeper.split("refs {")).toHaveLength(2);
+    expect(deeper.split("\n").filter((l) => /^ {2}\w/.test(l))).toHaveLength(1);
+    // All reads its root alone, then walks each hop by its terms' ids.
+    const all = { ...base, focus: "term:7", depth: Infinity };
+    expect(ontologyQuery(m, all) as string).toMatch(/targetTerm \{\n\s+id\n\s+\}/);
+    const hop = ontologyHopQuery(m, all, 3, [1, 2]) as string;
     expect(hop).toMatch(/on_terms\(where: \{ id: \{ in: \[1,2\] \} \}\)/);
     expect(hop.split("edgesOut")).toHaveLength(2);
   });

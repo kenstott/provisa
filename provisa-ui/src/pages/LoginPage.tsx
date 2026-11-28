@@ -48,6 +48,8 @@ import type { PublicBranding } from "../api/branding";
 import { applyOrgBranding, brandingOrg } from "../lib/orgBranding";
 import { OrgBrandingHeader } from "../components/OrgBrandingHeader";
 import { setStored } from "../lib/browserStorage";
+import { PASSWORD_CHANGE_REQUIRED } from "../api/breakglass";
+import { BreakglassPasswordForm } from "../components/BreakglassPasswordForm";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -87,6 +89,10 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   // it stays collapsed behind a disclosure until asked for -- the card opens at roughly half height.
   const [emailOpen, setEmailOpen] = useState(false);
   const [operatorMode, setOperatorMode] = useState(false);
+  // REQ-1264: the break-glass sign-in was refused until its generated password is replaced.
+  const [passwordChange, setPasswordChange] = useState(false);
+  // REQ-1264: the password was changed on a deployment that cannot issue the session itself.
+  const [passwordChanged, setPasswordChanged] = useState(false);
   // REQ-1486: the branding of the org this sign-in is for. Null until it is read, and null forever
   // on a sign-in that belongs to no org — the header renders nothing in both cases.
   const [branding, setBranding] = useState<PublicBranding | null>(null);
@@ -259,6 +265,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+        // REQ-1264: the first sign-in with the generated password is refused until it is changed.
+        if (resp.status === 403 && body.code === PASSWORD_CHANGE_REQUIRED) {
+          setPasswordChanged(false);
+          setPasswordChange(true);
+          return;
+        }
         setError(serverMessage(body, requestFailed("Login", resp.status)));
         return;
       }
@@ -403,11 +415,50 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   // REQ-1472: the operator form, reachable from any provider's sign-in page. Rendered as its own
   // view rather than inline so the IdP buttons above it cannot be mistaken for the credential
   // this form takes — the break-glass account exists only in this deployment's own config.
+  // REQ-1264: the forced first-sign-in rotation, in place of the refused operator sign-in.
+  if (operatorMode && passwordChange) {
+    return (
+      <div className="page">
+        <OrgBrandingHeader branding={branding} />
+        <Title order={2}>{t("breakglassPassword.title")}</Title>
+        <BreakglassPasswordForm
+          username={username}
+          currentPassword={password}
+          onChanged={(token) => {
+            setPasswordChange(false);
+            setPassword("");
+            if (token === null) {
+              setPasswordChanged(true);
+              return;
+            }
+            // REQ-1472: the new session is an operator session, under the operator key.
+            try {
+              startSuperuserSession(token);
+            } catch (e) {
+              if (!(e instanceof SessionStorageError)) throw e;
+              return; // logged and noticed where it failed: the sign-in page stays
+            }
+            finishLogin(token);
+          }}
+          onCancel={() => {
+            setPasswordChange(false);
+            setPassword("");
+          }}
+        />
+      </div>
+    );
+  }
+
   if (operatorMode) {
     return (
       <div className="page">
         <OrgBrandingHeader branding={branding} />
         <Title order={2}>{t("loginPage.operatorSignInTitle")}</Title>
+        {passwordChanged && (
+          <Alert color="green" mb="sm" data-testid="breakglass-password-changed">
+            {t("breakglassPassword.changedSignIn")}
+          </Alert>
+        )}
         <form onSubmit={handleOperatorLogin} style={{ maxWidth: 360 }}>
           <FormLayout>
             <FormField size="long">

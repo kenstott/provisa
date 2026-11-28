@@ -274,6 +274,45 @@ def _jsonapi(handler) -> jsonapi_spec.JsonApi:
     return api
 
 
+def _grpc_service_pool(methods: list[str]):
+    """A pool holding provisa.v1.ProvisaService with one server-streaming RPC per name, in order."""
+    from google.protobuf import descriptor_pb2
+    from google.protobuf.descriptor_pool import DescriptorPool
+
+    file = descriptor_pb2.FileDescriptorProto(name="provisa.proto", package="provisa.v1")
+    file.message_type.add(name="Row")
+    service = file.service.add(name="ProvisaService")
+    for name in methods:
+        service.method.add(
+            name=name,
+            input_type=".provisa.v1.Row",
+            output_type=".provisa.v1.Row",
+            server_streaming=True,
+        )
+    pool = DescriptorPool()
+    pool.Add(file)
+    return pool
+
+
+def test_grpc_query_ok_queries_the_fixture_table_not_the_first_table_declared():
+    """The role's service declares the control plane's own (empty) tables before the fixture's:
+    the OK case queries types_fixture, which has a row."""
+    g = grpc_conformance.Grpc("127.0.0.1:1", "r", AUTH)
+    g._services = ["provisa.v1.ProvisaService"]
+    g._pool = _grpc_service_pool(
+        ["QueryDataProductCommands", "QueryTypesFixtureBatch", "QueryTypesFixture"]
+    )
+    assert g.query_method().name == "QueryTypesFixture"
+
+
+def test_grpc_a_service_without_the_fixture_tables_rpc_fails_naming_what_it_declares():
+    g = grpc_conformance.Grpc("127.0.0.1:1", "r", AUTH)
+    g._services = ["provisa.v1.ProvisaService"]
+    g._pool = _grpc_service_pool(["QueryDataProductCommands"])
+    with pytest.raises(AssertionError, match="types_fixture.*QueryDataProductCommands"):
+        g.query_method()
+
+
 def test_a_jsonapi_server_answering_as_specified_passes_every_case():
     assert _failed(surface_cases.run(jsonapi_spec.cases(_jsonapi(_jsonapi_server())))) == {}
 

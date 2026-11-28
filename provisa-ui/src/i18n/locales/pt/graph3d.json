@@ -102,6 +102,7 @@
     "openAsQueryFocused": "A vizinhança da pesquisa ou do foco ainda não é expressável como uma só consulta.",
     "openAsQueryCompiling": "Compilando a consulta…",
     "openAsQueryNoCypher": "Esta consulta não tem forma Cypher.",
+    "openAsQueryCypherOnly": "Todos os saltos é uma consulta Cypher: abra-a como Cypher.",
     "layersMenu": "Camadas",
     "termsMenu": "Termos",
     "menuAll": "todos",

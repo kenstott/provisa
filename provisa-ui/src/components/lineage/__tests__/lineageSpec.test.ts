@@ -21,6 +21,7 @@ import { lineageSpec, lineageTrace, type LineageWords } from "../lineageSpec";
 const WORDS: LineageWords = {
   reported: "reported",
   columns: (n) => `${n} columns`,
+  via: (views) => `via ${views}`,
   unused: (n) => `+${n} unused`,
   materialized: "materialized",
   feedbackCycle: "feedback",
@@ -99,10 +100,12 @@ describe("lineageSpec", () => {
       data: { relation: "raw.a", collapsed: "yes" },
     });
     expect(s.nodes.some((n) => n.parent === "rel:raw.a")).toBe(false);
-    expect(s.edges.filter((e) => e.source === "rel:raw.a").map((e) => e.target).sort()).toEqual([
-      "mid.m.x",
-      "out.o.total",
-    ]);
+    expect(
+      s.edges
+        .filter((e) => e.source === "rel:raw.a")
+        .map((e) => e.target)
+        .sort(),
+    ).toEqual(["mid.m.x", "out.o.total"]);
   });
 });
 

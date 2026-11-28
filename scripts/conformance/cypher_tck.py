@@ -1002,14 +1002,14 @@ def main(argv: list[str]) -> int:
     # 2026-10-27): the job's Bolt endpoint and the TCK session user's token, from the job's env.
     if os.environ.get("CONFORMANCE_BOLT_URI"):
         bolt.configure(os.environ["CONFORMANCE_BOLT_URI"], os.environ["CONFORMANCE_SESSION_TOKEN"])
-    # The fixture model a test procedure is declared in, as a command, and the break-glass
-    # account that puts it (REQ-2167, amended 2026-10-27).
+    # The fixture model a test procedure is declared in, as a command, and the instance's
+    # org_admin that puts it (REQ-2167, amended 2026-10-27; REQ-1264).
     if os.environ.get("CONFORMANCE_MODEL"):
         procedures.configure(
             base,
             Path(os.environ["CONFORMANCE_MODEL"]),
-            os.environ["PROVISA_SUPERUSER_USERNAME"],
-            os.environ["PROVISA_SUPERUSER_PASSWORD"],
+            os.environ["CONFORMANCE_ADMIN_USER"],
+            os.environ["CONFORMANCE_ADMIN_PASSWORD"],
             # Its callers: the runner's role over HTTP and the Bolt session's.
             (role, bolt.EMPTY_ROLE),
         )

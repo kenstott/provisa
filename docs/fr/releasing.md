@@ -55,8 +55,8 @@ Chaque version publie les assets suivants, tous attachés au GitHub Release (le 
 | `Provisa-Container-<tag>-windows-x64.exe` | Mise à niveau vers le palier conteneur Windows x64 (WSL2 + Trino) |
 | `provisa-jdbc-<tag>.jar` | Pilote JDBC — Tableau, PowerBI, DBeaver |
 | `provisa_client-<pep440>-py3-none-any.whl` | Client Python (également sur PyPI) |
-| `provisa-core-images-<tag>.tar.gz` | Archives tarball des images Core Services (arm64, sans connexion) |
-| `provisa-core-images-amd64-<tag>.zip` | Images Core Services (amd64, palier conteneur Windows / sans connexion) |
+| `provisa-core-images-<arch>-<tag>.sha256` | Manifeste des images Core Services (arm64, amd64) : chaque asset d'image et son sha256 |
+| `provisa-core-image-<name>-<arch>-<tag>.tar.gz` | Une image Core Services (arm64, amd64 ; sans connexion) ; une image de 1 Gio ou plus est publiée en `.part1`, `.part2`, ... |
 | `provisa-obs-images-<tag>.tar.gz` | Images de l'Observability Stack (optionnel) |
 | `provisa-demo-images-<tag>.tar.gz` | Images du Demo Data Pack (optionnel) |
 | `provisa-trino-plugins-<tag>.tar.gz` | Connecteurs du Coordination Engine (SharePoint, Splunk, File) |

@@ -76,23 +76,50 @@ function Provision-Containerd {
 
 # -- 4. Obtain + load core images ----------------------------------------------
 # Images are NOT bundled in the installer (they exceed GitHub's 2 GB asset limit).
-# Prefer a local images/ dir (airgap: user extracted the core-images zip beside the
-# installer); otherwise download provisa-core-images-amd64-<VERSION>.zip from the
-# matching GitHub release and extract it.
+# Prefer a local images/ dir (airgap: the image tarballs beside the installer). Otherwise the
+# release's core image assets: one per image (gzipped docker-save tarball), an image of 1 GiB
+# or more as numbered parts, each under GitHub's 2 GiB per-asset limit, listed with their
+# sha256 in provisa-core-images-amd64-<VERSION>.sha256 (scripts/ci/package_core_images.sh).
+# The manifest and each asset it lists are taken from beside the installer when there (airgap),
+# else downloaded from the matching GitHub release.
+function Get-CoreAsset([string]$Name, [string]$DownloadDir) {
+  $local = Join-Path $ScriptDir $Name
+  if (Test-Path $local) { return $local }
+  $url = "https://github.com/kenstott/provisa/releases/download/$Version/$Name"
+  $out = Join-Path $DownloadDir $Name
+  Write-Info "Downloading $url"
+  Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+  return $out
+}
+
 function Resolve-ImagesDir {
   if (Test-Path (Join-Path $ImagesDir '*.tar.gz')) { return $ImagesDir }
-  $localZip = Get-ChildItem -Path $ScriptDir -Filter 'provisa-core-images-amd64-*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
   $dl = Join-Path $ProvisaHome 'container-images'
+  $parts = Join-Path $ProvisaHome 'container-images-download'
   New-Item -ItemType Directory -Path $dl -Force | Out-Null
-  if (-not $localZip) {
-    $zipName = "provisa-core-images-amd64-$Version.zip"
-    $url = "https://github.com/kenstott/provisa/releases/download/$Version/$zipName"
-    $localZip = Join-Path $dl $zipName
-    Write-Info "Downloading core images: $url"
-    Invoke-WebRequest -Uri $url -OutFile $localZip -UseBasicParsing
+  New-Item -ItemType Directory -Path $parts -Force | Out-Null
+  # A rerun appends parts afresh; the Trino image (below) is kept.
+  Get-ChildItem -Path $dl -Filter '*.tar.gz' | Where-Object { $_.Name -ne 'trino-481.tar.gz' } | Remove-Item -Force
+  $manifestName = "provisa-core-images-amd64-$Version.sha256"
+  $manifest = Get-CoreAsset $manifestName $parts
+  Write-Info 'Assembling core images...'
+  foreach ($line in Get-Content $manifest) {
+    if (-not $line.Trim()) { continue }
+    $sum, $asset = $line -split '\s+', 2
+    $file = Get-CoreAsset $asset $parts
+    if ((Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLower() -ne $sum.ToLower()) {
+      Write-Err "$file does not match its sha256 in $manifestName."; exit 1
+    }
+    # provisa-core-image-<name>-amd64-<VERSION>.tar.gz[.partN] -> <name>.tar.gz; parts are
+    # listed in order, so appending them rebuilds the image's tarball.
+    $name = $asset.Substring('provisa-core-image-'.Length)
+    $name = $name.Substring(0, $name.IndexOf("-amd64-$Version.tar.gz"))
+    $target = Join-Path $dl "$name.tar.gz"
+    $in = [System.IO.File]::OpenRead($file)
+    $outStream = [System.IO.File]::Open($target, [System.IO.FileMode]::Append)
+    try { $in.CopyTo($outStream) } finally { $in.Dispose(); $outStream.Dispose() }
   }
-  Write-Info 'Extracting core images...'
-  Expand-Archive -Path $localZip -DestinationPath $dl -Force
+  Remove-Item -Path $parts -Recurse -Force
   # The Trino engine ships as its own release asset - bundled it pushed the zip past
   # GitHub's 2 GiB per-asset limit. Outer tar.gz wraps the docker-save tarball; tar.exe
   # (Windows 10+) drops trino-481.tar.gz into the same dir the load loop reads.

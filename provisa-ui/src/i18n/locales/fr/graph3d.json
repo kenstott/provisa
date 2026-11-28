@@ -102,6 +102,7 @@
     "openAsQueryFocused": "Le voisinage de la recherche ou du focus ne s’exprime pas encore en une seule requête.",
     "openAsQueryCompiling": "Compilation de la requête…",
     "openAsQueryNoCypher": "Cette requête n’a pas de forme Cypher.",
+    "openAsQueryCypherOnly": "Tous les sauts est une requête Cypher : ouvrez-la en Cypher.",
     "layersMenu": "Couches",
     "termsMenu": "Termes",
     "menuAll": "tous",

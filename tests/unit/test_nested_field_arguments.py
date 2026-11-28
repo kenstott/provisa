@@ -176,10 +176,19 @@ def test_a_nested_where_holds_at_depth(meta, depth):
 
 
 @pytest.mark.parametrize("depth", [2, 3])
+def test_a_nested_where_is_applied_by_the_grouped_read_at_depth(meta, depth):
+    # REQ-2174: a where alone is applied inside the deepest field's grouped read, to the rows it
+    # groups: no field is joined row by row, so sibling lists never multiply one another's rows.
+    sql = _compiled(meta, _depth(_KEPT, depth)).sql
+    assert "LATERAL" not in sql, sql
+    deepest = sql.rsplit("json_agg(", 1)[1]
+    assert '"rel_type" IN (' in deepest.split("GROUP BY", 1)[0], sql
+
+
+@pytest.mark.parametrize("depth", [2, 3])
 @pytest.mark.parametrize(
     "args, clause",
     [
-        (_KEPT, '"rel_type" IN ('),
         ("(order_by: [{ id: desc }])", "ORDER BY"),
         ("(offset: 1)", "OFFSET"),
         ("(distinct_on: [relType])", "DISTINCT ON"),

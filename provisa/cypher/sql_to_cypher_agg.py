@@ -29,6 +29,7 @@ from provisa.cypher.sql_to_cypher_helpers import (
     _src_alias_from_on,
     rel_pattern,
 )
+from provisa.cypher.sql_to_cypher_junction import _end_subquery
 
 
 def _extract_array_agg_col_and_from(
@@ -408,6 +409,7 @@ def _process_json_subqueries(
     node_fn,
     join_to_rel,
     key_prop_for_label,
+    junction_of,
 ) -> None:
     """Process json_agg/json_object correlated subqueries; mutates cypher_lines and array_agg_return.
 
@@ -444,6 +446,7 @@ def _process_json_subqueries(
                 agg_seen_label,
                 letters,
                 [agg_alias_counter],
+                junction_of,
             )
             array_agg_return[_top_alias] = _field_value(
                 _jbo_sel, _is_array, sql_base_alias, base_alias, base_label, cypher_lines, _fc
@@ -546,6 +549,9 @@ class _FieldContext:
     agg_seen_label: dict[str, str]
     letters: list[str]
     counter: list[int]
+    #: ``(table, where, near SQL alias, near label)`` -> the junction's JunctionHop beside that
+    #: row, or None when ``table`` is no junction (junction_hop).
+    junction_of: Any
 
     def fresh(self) -> str:
         name = _next_short_alias(self.counter[0], self.letters)
@@ -573,7 +579,10 @@ def _field_value(
         raise UntranslatableSubquery(f"nested field over {sel.sql()}")
     label = _resolve_label(tbl, fc.domain_to_label)
     if label is None:
-        raise UntranslatableSubquery(f"unmapped nested table: {tbl.sql()}")
+        hop = fc.junction_of(tbl, sel.args.get("where"), parent_sql, parent_label)
+        if hop is None:
+            raise UntranslatableSubquery(f"unmapped nested table: {tbl.sql()}")
+        return _junction_field_value(sel, tbl, hop, is_array, parent_var, fc)
     inner = tbl.alias or tbl.name
     var = fc.fresh()
     fc.agg_seen[inner] = var
@@ -650,6 +659,47 @@ def _field_value(
         return "COLLECT { " + " ".join(lines) + f" RETURN {value} }}"
     key_prop = fc.key_prop_for_label(label)
     return f"CASE WHEN {var}.{key_prop} IS NULL THEN NULL ELSE {value} END"
+
+
+def _junction_field_value(
+    sel: exp.Select,
+    tbl: exp.Table,
+    hop,
+    is_array: bool,
+    parent_var: str,
+    fc: _FieldContext,
+) -> str:
+    """A to-many field over a junction (REQ-2174: its where kept in its grouped read) as the
+    relationships it holds beside ``parent_var``: ``COLLECT { MATCH (p)-[r:T]->(far) RETURN map }``,
+    each junction column read off the hop and each end's to-one field its node's map. A condition
+    beyond its key and types, a cap on its rows, or a join inside it has no form here."""
+    if not is_array or hop.rest or sel.args.get("limit") or sel.args.get("joins"):
+        raise UntranslatableSubquery(f"junction field {sel.sql()}")
+    jbo = _extract_jbo_node_for_ret(sel)
+    if jbo is None:
+        raise UntranslatableSubquery(f"junction field with no object: {sel.sql()}")
+    own = tbl.alias or tbl.name
+    rel, far = fc.fresh(), fc.fresh()
+    variables = {own: (rel, far, hop)}
+    pairs = []
+    for kv in jbo.expressions:
+        if not isinstance(kv, exp.JSONKeyValue):
+            raise UntranslatableSubquery(f"junction field value {kv.sql()}")
+        key = kv.this.sql().strip("'\"")
+        val = kv.expression
+        if isinstance(val, exp.Column) and val.table in ("", own):
+            text = hop.column(val.name, parent_var, rel, far, optional=False)
+        elif isinstance(val, exp.Subquery):
+            text = _end_subquery(
+                val, variables, parent_var, lambda t: _resolve_label(t, fc.domain_to_label)
+            )
+            if text is None:
+                raise UntranslatableSubquery(f"junction field {key!r}: {val.sql()}")
+        else:
+            raise UntranslatableSubquery(f"junction field value {val.sql()}")
+        pairs.append(f"{key}: {text}")
+    match = f"MATCH ({parent_var}){hop.arrow(rel)}({far}:{hop.far_label})"
+    return "COLLECT { " + match + " RETURN {" + ", ".join(pairs) + "} }"
 
 
 def _conj(node: exp.Expression) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

@@ -68,20 +68,19 @@ stage_images() {
   fi
 
   if [ -z "$src" ]; then
-    # Slim base: core images aren't bundled in the DMG. Acquire the core-images add-on
+    # Slim base: core images aren't bundled in the DMG. Acquire the core image assets
     # (local-first beside the installer for airgap, else download). This is the Trino/
     # Docker tier's image source; the native tier never reaches here.
     local version="${PROVISA_VERSION:-}"
     if [ -z "$version" ] && command -v provisa &>/dev/null; then
       version="$(provisa version 2>/dev/null | head -1 | awk '{print $NF}')" || version=""
     fi
-    acquire_addon "Core images" "provisa-core-images-${version}.tar.gz" "$staged" "y"
-    # The Trino engine ships as its own release asset — bundled it pushed the core-images
-    # tarball past GitHub's 2 GiB per-asset limit. Same staging dir; the loader takes
-    # every tarball it finds there.
+    # The Trino engine ships as its own release asset. Same staging dir; the loader takes
+    # every tarball it finds there. First: acquire_addon skips a non-empty destination.
     acquire_addon "Trino engine image" "provisa-trino-image-${version}.tar.gz" "$staged" "y"
+    acquire_core_images "$version" "$staged" || exit 1
     if [ ! "$(ls -A "$staged" 2>/dev/null)" ]; then
-      err "Core images unavailable. Place provisa-core-images-*.tar.gz and provisa-trino-image-*.tar.gz beside the installer and re-run."
+      err "Core images unavailable. Place provisa-core-images-arm64-*.sha256, the assets it lists and provisa-trino-image-*.tar.gz beside the installer and re-run."
       exit 1
     fi
     return 0
@@ -437,6 +436,89 @@ acquire_addon() {
   fi
 }
 
+# ── Acquire the core images: one asset per image, listed in a manifest ────────
+# The release publishes each core image (gzipped `docker save` tarball) as its own asset,
+# an image of 1 GiB or more as numbered parts, each under GitHub's 2 GiB per-asset limit,
+# and lists them with their sha256 in provisa-core-images-arm64-<version>.sha256
+# (scripts/ci/package_core_images.sh). The manifest and each asset it lists are found
+# where acquire_addon looks (offline first), else downloaded from the release.
+# Usage: acquire_core_images <version> <dest_dir>
+acquire_core_images() {
+  local version="$1" dest_dir="$2"
+  local manifest="provisa-core-images-arm64-${version}.sha256"
+  local dl="${PROVISA_HOME}/core-images-download" m sum asset file name
+  CORE_IMAGES_DOWNLOAD=""
+  rm -rf "$dl"
+  m="$(_core_asset_local "$manifest")" || {
+    m="${dl}/${manifest}"
+    _core_asset_download "$manifest" "$version" "$dl" || {
+      err "Core images not found. Place ${manifest} and the assets it lists beside the installer and re-run."
+      rm -rf "$dl"
+      return 1
+    }
+  }
+  info "Assembling core images from ${manifest}..."
+  # The manifest on fd 3: the download prompt reads stdin.
+  while read -r sum asset <&3; do
+    file="$(_core_asset_local "$asset")" || {
+      file="${dl}/${asset}"
+      _core_asset_download "$asset" "$version" "$dl" || {
+        err "Core image asset ${asset} (listed in ${manifest}) not found. Place it beside the installer and re-run."
+        rm -f "$dest_dir"/*.tar.gz; rm -rf "$dl"
+        return 1
+      }
+    }
+    if [ "$(shasum -a 256 "$file" | awk '{print $1}')" != "$sum" ]; then
+      err "Core image asset ${file} does not match its sha256 in ${manifest}. Remove it and re-run."
+      rm -f "$dest_dir"/*.tar.gz; rm -rf "$dl"
+      return 1
+    fi
+    # provisa-core-image-<name>-arm64-<version>.tar.gz[.partN] -> <name>.tar.gz; parts are
+    # listed in order, so appending them rebuilds the image's tarball.
+    name="${asset#provisa-core-image-}"
+    name="${name%-arm64-"${version}".tar.gz*}"
+    cat "$file" >> "${dest_dir}/${name}.tar.gz"
+  done 3< "$m"
+  rm -rf "$dl"
+  ok "Core images assembled."
+}
+
+# Prints the path of a release asset staged offline: installer-adjacent, this script's dir,
+# ~/Downloads or a mounted volume. Fails when it is in none.
+# Usage: _core_asset_local <asset>
+_core_asset_local() {
+  local cand
+  for cand in \
+    "$(dirname "$BUNDLE_DIR")/$1" \
+    "${SCRIPT_DIR}/$1" \
+    "${HOME}/Downloads/$1" \
+    "/Volumes/"*"/$1"; do
+    [ -f "$cand" ] && { printf '%s\n' "$cand"; return 0; }
+  done
+  return 1
+}
+
+# Downloads a release asset into <dl_dir>. The first download asks once (unless
+# PROVISA_NONINTERACTIVE), and the answer (CORE_IMAGES_DOWNLOAD) holds for the rest.
+# Usage: _core_asset_download <asset> <version> <dl_dir>
+_core_asset_download() {
+  local asset="$1" version="$2" dl="$3"
+  [ -n "$version" ] || return 1
+  if [ -z "$CORE_IMAGES_DOWNLOAD" ]; then
+    if [[ -n "${PROVISA_NONINTERACTIVE:-}" ]]; then
+      CORE_IMAGES_DOWNLOAD="y"
+    else
+      printf "\n${BOLD}Core images${NC}\nNot found locally. Download from GitHub? (~3–4 GB) [y/N]: "
+      read -r CORE_IMAGES_DOWNLOAD
+    fi
+  fi
+  [ "$(_lc "$CORE_IMAGES_DOWNLOAD")" = "y" ] || return 1
+  mkdir -p "$dl"
+  info "Downloading ${asset}..."
+  curl -fL --retry 3 --retry-delay 5 -o "${dl}/${asset}" \
+    "https://github.com/kenstott/provisa/releases/download/${version}/${asset}"
+}
+
 # ── Acquire only the add-on image sets the chosen deployment needs ────────────
 install_addons() {
   local version="${PROVISA_VERSION:-}"
@@ -673,7 +755,7 @@ main() {
   install_to_applications # self-installs to /Applications if running from DMG
 
   echo "PROGRESS:build"
-  stage_images            # acquire provisa-core-images tarball (local-first, else download)
+  stage_images            # acquire the core image assets (local-first, else download)
 
   echo "PROGRESS:images"
   load_images "${PROVISA_HOME}/images"   # docker load app + core images from the tarball

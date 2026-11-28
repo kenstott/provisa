@@ -261,9 +261,60 @@ start_docker() {
 }
 
 # ── Acquire + load images (slim AppImage ships none — get them on demand) ─────
-# Discovery: local-first (beside the AppImage / ~/Downloads / cwd) for airgap, else
-# download provisa-core-images-amd64-<version>.zip from the release. It contains the
-# gzipped `docker save` tarballs (registry images + zaychik + provisa app).
+# The release publishes each core image (registry images + zaychik + provisa app, gzipped
+# `docker save` tarballs) as its own asset, an image of 1 GiB or more as numbered parts,
+# each under GitHub's 2 GiB per-asset limit, and lists them with their sha256 in
+# provisa-core-images-amd64-<version>.sha256 (scripts/ci/package_core_images.sh).
+# Discovery, for the manifest and then each asset it lists: local-first (beside the
+# AppImage / ~/Downloads / cwd) for airgap, else downloaded from the release.
+_find_core_asset() {
+  # $1 release asset name, $2 the AppImage's directory, $3 the download directory. Prints the path
+  # of the asset: beside the AppImage, in ~/Downloads or in the cwd (airgap), else downloaded
+  # from the release into $3. Fails when it is in none and cannot be downloaded.
+  local cand
+  for cand in "$2/$1" "${HOME}/Downloads/$1" "${PWD}/$1"; do
+    [ -f "$cand" ] && { printf '%s\n' "$cand"; return 0; }
+  done
+  [ -n "$PROVISA_VERSION" ] || return 1
+  mkdir -p "$3"
+  info "Downloading $1..." >&2
+  curl -fL --retry 3 --retry-delay 5 -o "$3/$1" \
+    "https://github.com/kenstott/provisa/releases/download/${PROVISA_VERSION}/$1" >&2 || return 1
+  printf '%s\n' "$3/$1"
+}
+
+_assemble_core_images() {
+  # $1 the staging dir, $2 the AppImage's directory. Writes each core image's tarball
+  # (<name>.tar.gz) into $1 from the assets the manifest lists, each checked against its sha256.
+  local staged="$1" appdir_parent="$2"
+  local manifest="provisa-core-images-amd64-${PROVISA_VERSION}.sha256"
+  local dl="${PROVISA_HOME}/core-images-download"
+  local manifest_src="" sum asset file name
+  rm -rf "$dl"
+  manifest_src="$(_find_core_asset "$manifest" "$appdir_parent" "$dl")" || {
+    err "Core images not found. Place ${manifest} and the assets it lists beside the AppImage (airgap) or connect to the network, then re-run."
+    exit 1
+  }
+  info "Assembling core images..."
+  rm -f "${staged}"/*.tar.gz
+  while read -r sum asset; do
+    file="$(_find_core_asset "$asset" "$appdir_parent" "$dl")" || {
+      err "Core image asset ${asset} (listed in ${manifest}) not found. Place it beside the AppImage (airgap) or connect to the network, then re-run."
+      exit 1
+    }
+    if ! printf '%s  %s\n' "$sum" "$file" | sha256sum -c --quiet - >/dev/null; then
+      err "Core image asset ${file} does not match its sha256 in ${manifest}. Remove it and re-run."
+      exit 1
+    fi
+    # provisa-core-image-<name>-amd64-<version>.tar.gz[.partN] -> <name>.tar.gz; parts are
+    # listed in order, so appending them rebuilds the image's tarball.
+    name="${asset#provisa-core-image-}"
+    name="${name%-amd64-"${PROVISA_VERSION}".tar.gz*}"
+    cat "$file" >> "${staged}/${name}.tar.gz"
+  done < "$manifest_src"
+  rm -rf "$dl"
+}
+
 load_images() {
   local staged="${PROVISA_HOME}/images"
   local marker="${staged}/.version"
@@ -275,30 +326,9 @@ load_images() {
   # presence check would silently load the old build forever).
   local staged_version=""; [ -f "$marker" ] && staged_version="$(cat "$marker")"
   if ! ls "${staged}"/*.tar.gz >/dev/null 2>&1 || [ "$staged_version" != "$PROVISA_VERSION" ]; then
-    if ! command -v unzip >/dev/null 2>&1; then
-      err "unzip is required to extract the core images. Install it (e.g. apt-get install unzip) and re-run."
-      exit 1
-    fi
-    local zip="provisa-core-images-amd64-${PROVISA_VERSION}.zip"
-    local src="" cand appdir_parent
+    local appdir_parent cand
     appdir_parent="$(dirname "$APPDIR")"
-    for cand in "${appdir_parent}/${zip}" "${HOME}/Downloads/${zip}" "${PWD}/${zip}"; do
-      [ -f "$cand" ] && { src="$cand"; break; }
-    done
-    if [ -z "$src" ] && [ -n "$PROVISA_VERSION" ]; then
-      info "Downloading core images (${zip})..."
-      if curl -fL --retry 3 --retry-delay 5 -o "${PROVISA_HOME}/${zip}" \
-           "https://github.com/kenstott/provisa/releases/download/${PROVISA_VERSION}/${zip}"; then
-        src="${PROVISA_HOME}/${zip}"
-      fi
-    fi
-    if [ -z "$src" ]; then
-      err "Core images not found. Place ${zip} beside the AppImage (airgap) or connect to the network, then re-run."
-      exit 1
-    fi
-    info "Extracting core images..."
-    rm -f "${staged}"/*.tar.gz
-    ( cd "$staged" && unzip -o -q "$src" )
+    _assemble_core_images "$staged" "$appdir_parent"
     # The Trino engine ships as its own release asset — bundled it pushed the zip past
     # GitHub's 2 GiB per-asset limit. It is an outer tar.gz wrapping the docker-save
     # tarball; extracting drops trino-481.tar.gz into the same staging dir the image
@@ -330,7 +360,6 @@ load_images() {
       [ "$trino_src" = "${PROVISA_HOME}/${trino}" ] && rm -f "$trino_src"
     fi
     printf '%s' "$PROVISA_VERSION" > "$marker"
-    [ "$src" = "${PROVISA_HOME}/${zip}" ] && rm -f "$src"
   fi
 
   # Secondary nodes skip database/store images — they don't run them. The control

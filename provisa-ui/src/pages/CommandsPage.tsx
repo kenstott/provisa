@@ -662,6 +662,10 @@ export function CommandsPage() {
                     productNames={(fn.productIds ?? []).map(
                       (id) => dataProducts.find((dp) => dp.id === id)?.name ?? id,
                     )}
+                    entered={enteredFieldsOf(
+                      fn.implKind ?? "",
+                      sources.find((s) => s.id === fn.sourceId),
+                    )}
                   />
                 </>
               )}

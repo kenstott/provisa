@@ -251,8 +251,8 @@ describe("a Wikidata source, created", () => {
       queryTemplate: COUNTRIES.query,
     });
     expect(inputs[1].columns.map((c) => c.name)).toEqual(["id", "name", "iso_4217"]);
-    // The step goes on to what was registered, its rows landing in the replica load.
-    expect(await screen.findByTestId("your-data-step")).toBeInTheDocument();
+    // REQ-2234 (amended 2026-11-27): the step goes on to Review samples of what was registered.
+    expect(await screen.findByTestId("review-samples-step")).toBeInTheDocument();
     expect(screen.queryByTestId("tables-page")).toBeNull();
   });
 

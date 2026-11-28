@@ -45,21 +45,25 @@ jobs:
           --build-context duckdb-ext-wheels="$PROVISA_DUCKDB_EXT_WHEELS"
           -t provisa/provisa:ci .
 
+      # Every `docker run` below is a launcher of this image, and PROVISA_CONFIG has no default
+      # (provisa/core/config_location.py): each names the wizard skeleton the Dockerfile bakes,
+      # the config the generated control-plane compose pins. The UI server's query-node gate reads
+      # the loaded config on every request, so GET / without it raises "PROVISA_CONFIG is not set".
       # REQ-2194: provisa's compiled encoders are in the image (the Dockerfile imports them too).
       - name: provisa's encoders import inside the image
-        run: docker run --rm provisa/provisa:ci python -c "import provisa._encoders.pgwire"
+        run: docker run --rm -e PROVISA_CONFIG=/app/config/provisa-install-base.yaml provisa/provisa:ci python -c "import provisa._encoders.pgwire"
 
       # The image serves the UI its ui-build stage built, with no UI built on the host first.
       - name: the UI server answers GET / inside the image
-        run: docker run --rm -i provisa/provisa:ci python - < scripts/ci/ui_static_smoke.py
+        run: docker run --rm -e PROVISA_CONFIG=/app/config/provisa-install-base.yaml -i provisa/provisa:ci python - < scripts/ci/ui_static_smoke.py
 
       - name: render_graph draws inside the image
-        run: docker run --rm -i provisa/provisa:ci python - < scripts/ci/render_graph_smoke.py
+        run: docker run --rm -e PROVISA_CONFIG=/app/config/provisa-install-base.yaml -i provisa/provisa:ci python - < scripts/ci/render_graph_smoke.py
 
       - name: a files source's connector server runs inside the image
-        run: docker run --rm -i provisa/provisa:ci python - < scripts/ci/files_connector_smoke.py
+        run: docker run --rm -e PROVISA_CONFIG=/app/config/provisa-install-base.yaml -i provisa/provisa:ci python - < scripts/ci/files_connector_smoke.py
 
       # REQ-2227: a Rust source is prepared inside the image. serde's derive and build script are
       # compiled and linked by the image's own C compiler.
       - name: a Rust source is prepared inside the image
-        run: docker run --rm -i -v "$PWD/tests/fixtures/rust_source:/fixture:ro" provisa/provisa:ci python - /fixture < scripts/ci/rust_source_smoke.py
+        run: docker run --rm -e PROVISA_CONFIG=/app/config/provisa-install-base.yaml -i -v "$PWD/tests/fixtures/rust_source:/fixture:ro" provisa/provisa:ci python - /fixture < scripts/ci/rust_source_smoke.py

@@ -26,7 +26,14 @@ import type {
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { CodeEditorField } from "../../components/CodeEditorField";
 import { entityName } from "../../components/entityName";
-import { IMPL_KINDS, argumentsText, isNativeSql } from "./types";
+import {
+  CODE_ENTERED,
+  ENTERED_CODE_TYPE,
+  IMPL_KINDS,
+  argumentsText,
+  isNativeSql,
+  type FormState,
+} from "./types";
 
 function ReadHeading({ children }: { children: string }) {
   return (
@@ -121,14 +128,19 @@ function useCommonFields(c: TrackedFunction | TrackedWebhook, type: "function" |
 export function FunctionRead({
   fn,
   productNames,
+  entered,
 }: {
   fn: TrackedFunction;
   /** The data products it belongs to, by name; none when it belongs to none. Set on the product. */
   productNames: string[];
+  /** REQ-1159 (amended 2026-11-27): the entered code a code command's source holds, or null when
+   *  the command is not entered code (enteredFieldsOf). */
+  entered: Pick<FormState, "enteredCode" | "enteredDependencies"> | null;
 }) {
   const { t } = useTranslation();
   const common = useCommonFields(fn, "function");
-  const impl = fn.implKind ?? "source_procedure";
+  // A code command whose source holds entered code reads as the form edits it: Code (entered).
+  const impl = entered ? CODE_ENTERED : (fn.implKind ?? "source_procedure");
   const binding = fn.binding ?? {};
   const bound = (key: string) => {
     const v = binding[key];
@@ -152,42 +164,57 @@ export function FunctionRead({
   const isStatement = impl === "statement";
   // REQ-2168: a SQL expression function is its template, a query answering one value.
   const isTemplate = impl === "sql_expression";
-  const declaresItsShape = isStatement || isTemplate;
-  const implementation: DetailField[] = isTemplate
-    ? [sqlField(t("commandFormFields.bindingTemplate"), "function-read-template")]
-    : isStatement
-      ? [
-          sqlField(t("commandFormFields.bindingSql"), "function-read-sql"),
-          ...contractFields(fn.contract, t),
-        ]
-      : isNativeSql(impl, binding)
+  // REQ-1159 (amended 2026-11-27): entered code's declared function is its shape, as in the form.
+  const declaresItsShape = isStatement || isTemplate || entered !== null;
+  const implementation: DetailField[] = entered
+    ? [
+        {
+          label: t("codeSourceFields.code"),
+          value: CodeEditorField.readValue({
+            label: t("codeSourceFields.code"),
+            value: entered.enteredCode,
+            language: ENTERED_CODE_TYPE,
+            "data-testid": "function-read-entered-code",
+          }),
+        },
+        { label: t("codeSourceFields.dependencies"), value: entered.enteredDependencies || null },
+        { label: t("commandFormFields.functionName"), value: fn.functionName },
+      ]
+    : isTemplate
+      ? [sqlField(t("commandFormFields.bindingTemplate"), "function-read-template")]
+      : isStatement
         ? [
-            { label: t("commandFormFields.source"), value: entityName("source", fn.sourceId) },
-            sqlField(t("commandFormFields.nativeSql"), "function-read-native-sql"),
+            sqlField(t("commandFormFields.bindingSql"), "function-read-sql"),
+            ...contractFields(fn.contract, t),
           ]
-        : bySource
+        : isNativeSql(impl, binding)
           ? [
               { label: t("commandFormFields.source"), value: entityName("source", fn.sourceId) },
-              { label: t("commandFormFields.schema"), value: fn.schemaName },
-              { label: t("commandFormFields.functionName"), value: fn.functionName },
+              sqlField(t("commandFormFields.nativeSql"), "function-read-native-sql"),
             ]
-          : impl === "script"
-            ? [{ label: t("commandFormFields.bindingArgv"), value: bound("argv") }]
-            : impl === "http"
-              ? [
-                  { label: t("commandFormFields.bindingUrl"), value: bound("url") },
-                  { label: t("commandFormFields.method"), value: bound("method") },
-                ]
-              : impl === "grpc"
+          : bySource
+            ? [
+                { label: t("commandFormFields.source"), value: entityName("source", fn.sourceId) },
+                { label: t("commandFormFields.schema"), value: fn.schemaName },
+                { label: t("commandFormFields.functionName"), value: fn.functionName },
+              ]
+            : impl === "script"
+              ? [{ label: t("commandFormFields.bindingArgv"), value: bound("argv") }]
+              : impl === "http"
                 ? [
-                    { label: t("commandFormFields.bindingTarget"), value: bound("target") },
-                    { label: t("commandFormFields.bindingGrpcMethod"), value: bound("method") },
-                    {
-                      label: t("commandFormFields.bindingTls"),
-                      value: yesNo(Boolean(binding.tls)),
-                    },
+                    { label: t("commandFormFields.bindingUrl"), value: bound("url") },
+                    { label: t("commandFormFields.method"), value: bound("method") },
                   ]
-                : [{ label: t("commandFormFields.bindingCallable"), value: bound("callable") }];
+                : impl === "grpc"
+                  ? [
+                      { label: t("commandFormFields.bindingTarget"), value: bound("target") },
+                      { label: t("commandFormFields.bindingGrpcMethod"), value: bound("method") },
+                      {
+                        label: t("commandFormFields.bindingTls"),
+                        value: yesNo(Boolean(binding.tls)),
+                      },
+                    ]
+                  : [{ label: t("commandFormFields.bindingCallable"), value: bound("callable") }];
   const toTable = Boolean(fn.returns);
   return (
     <div className="detail-groups" data-testid={`function-read-${fn.name}`}>

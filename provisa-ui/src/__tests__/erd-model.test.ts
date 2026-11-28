@@ -549,7 +549,7 @@ describe("buildErdElements — junction relationships", () => {
     expect(entity?.data.type === "table" && entity.data.junction).toBe(false);
   });
 
-  it("the erd-junction tag draws the junction as the graph's one diamond, legs in its grape", () => {
+  it("the erd-junction tag draws the junction as the graph's one diamond, its legs plain lines", () => {
     // REQ-2239 (A JUNCTION IS A DIAMOND): the one exception to the single node shape.
     const erd = buildErdElements(
       [pets, owners, companions],
@@ -572,10 +572,10 @@ describe("buildErdElements — junction relationships", () => {
     expect(junction?.data.label).toBe("pet_companions\nJUNCTION");
     expect(entity?.data.shape).toBe("box");
     expect(entity?.data.w).toBe(SIZE.nodeWidth);
-    // Its legs keep the via tone; a junction's lines are solid.
+    // Its legs are solid, drawn as every edge is: no tone of their own (REQ-2239).
     const legs = spec.edges.filter((e) => e.source === "t:11" || e.target === "t:11");
     expect(legs).toHaveLength(2);
-    expect(legs.every((e) => e.tone === "via" && !e.dashed)).toBe(true);
+    expect(legs.every((e) => !("tone" in e) && !e.dashed)).toBe(true);
     // The stylesheet draws a diamond for that shape, and for nothing else.
     const sheet = graphStylesheet(graphTokens(false));
     const diamonds = sheet.filter((r) => (r.style as Record<string, unknown>).shape === "diamond");
@@ -584,6 +584,37 @@ describe("buildErdElements — junction relationships", () => {
       (t) => typeShape(t) === "diamond",
     );
     expect(shaped).toEqual(["junction"]);
+  });
+
+  it("draws every ERD line in the shared edge colour, keeping its cardinality arrows", () => {
+    // REQ-2239 (amended 2026-11-27): ERD edges use the shared edge colour. A direct line and a
+    // junction's legs alike carry no colour of their own; only hover, selection and a search
+    // match light a line, in every kind of graph.
+    const erd = buildErdElements(
+      [pets, owners, companions],
+      [viaRel({ targetTableId: 12 })],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "all",
+    );
+    const spec = erdGraph(erd, []);
+    expect(spec.edges.length).toBeGreaterThan(0);
+    expect(spec.edges.every((e) => e.arrow === "target" || e.arrow === "both")).toBe(true);
+    const els = graphElements(spec, (type) => type, "all").filter((e) => e.group === "edges");
+    for (const el of els) expect(Object.keys(el.data)).not.toContain("tone");
+    for (const dark of [false, true]) {
+      const t = graphTokens(dark);
+      const sheet = graphStylesheet(t);
+      const coloured = sheet.filter(
+        (r) =>
+          r.selector.startsWith("edge") && "line-color" in (r.style as Record<string, unknown>),
+      );
+      const rest = coloured.filter((r) => !/\.(lit|focused|picked|match)\b/.test(r.selector));
+      expect(rest.map((r) => r.selector)).toEqual(["edge"]);
+      expect((rest[0].style as Record<string, unknown>)["line-color"]).toBe(t.edge);
+      expect((rest[0].style as Record<string, unknown>)["target-arrow-color"]).toBe(t.edge);
+    }
   });
 
   it("a hidden junction collapses to a direct A→B edge labeled with the type", () => {

@@ -45,7 +45,9 @@ import psycopg
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent / "conformance"))
+sys.path.insert(0, str(Path(__file__).parent))
 from pgwire_catalog_types import job_assignments, registered_typing  # noqa: E402
+from seed_org_admin import basic_authorization, seed, write_boot_config  # noqa: E402
 
 _TABLES = 1000
 _TEXT_COLUMNS = 18
@@ -58,7 +60,9 @@ _PORTS = {
     "PROVISA_BOLT_PORT": "18934",
     "PROVISA_MCP_PORT": "18935",
 }
-_SUPERUSER = ("conformance-su", "conformance-su-password")
+#: The instance's org_admin, seated by first-run setup (seed_org_admin.py, REQ-1264). Its password
+#: is generated per start and used only by ``start``, which creates the measured users.
+_ADMIN_USER = "conformance-admin"
 _USERS = (("conformance", "conformance-password"), ("analyst", "analyst-password"))
 _REPO = Path(__file__).resolve().parent.parent
 _PYTHON = str(_REPO / ".venv" / "bin" / "python")
@@ -213,14 +217,16 @@ def _wait(url: str, attempts: int, *, pause: float = 2.0) -> None:
     raise TimeoutError(url)
 
 
-def _admin(method: str, path: str, body: bytes, content_type: str) -> bytes:
-    """The break-glass account's request; answers the response body."""
-    credentials = base64.b64encode(":".join(_SUPERUSER).encode()).decode()
+def _admin(method: str, path: str, body: bytes, content_type: str, password: str) -> bytes:
+    """The instance's org_admin's request; answers the response body."""
     request = urllib.request.Request(
         f"http://127.0.0.1:{_API_PORT}{path}",
         data=body,
         method=method,
-        headers={"Authorization": f"Basic {credentials}", "Content-Type": content_type},
+        headers={
+            "Authorization": basic_authorization(_ADMIN_USER, password),
+            "Content-Type": content_type,
+        },
     )
     for attempt in range(6):
         try:
@@ -267,7 +273,7 @@ def _seed(work: Path, home: Path, plane: dict[str, str]) -> str:
         conn.execute("CREATE SCHEMA IF NOT EXISTS conformance")
         for statement in (work / "model.sql").read_text().split(";\n"):
             conn.execute(statement)
-    config = home / "provisa.yaml"
+    config = home / "model.yaml"
     _conformance(
         "config",
         "--out",
@@ -289,6 +295,9 @@ def _seed(work: Path, home: Path, plane: dict[str, str]) -> str:
             for line in config.read_text().splitlines()
         )
     )
+    # The server boots on the model without its auth section, so first-run setup seats its
+    # org_admin; the full model is put as that administrator once it is up (_start).
+    write_boot_config(config, home / "provisa.yaml")
     return f"postgresql+psycopg://provisa:{password}@/provisa?host={host}&port={port}"
 
 
@@ -314,8 +323,6 @@ def _start(work: Path) -> None:
         "ORG_ID": "conformance",
         "TENANT_DATABASE_URL": url,
         "PLATFORM_DATABASE_URL": url,
-        "PROVISA_SUPERUSER_USERNAME": _SUPERUSER[0],
-        "PROVISA_SUPERUSER_PASSWORD": _SUPERUSER[1],
         "CONFORMANCE_JWT_SECRET": "conformance-jwt-signing-key-not-a-secret-0000",
         "CONFORMANCE_PG_HOST": plane["PG_HOST"],
         "CONFORMANCE_PG_PORT": plane["PG_PORT"],
@@ -341,20 +348,23 @@ def _start(work: Path) -> None:
         )
     (home / "server.pid").write_text(str(server.pid))
     _wait(f"http://127.0.0.1:{_API_PORT}/health", 600)
-    _admin(
-        "PUT",
-        "/admin/config",
-        (home / "provisa.yaml").read_bytes(),
-        "application/yaml",
-    )
+    admin_password = secrets.token_hex(24)
+    seed(f"http://127.0.0.1:{_API_PORT}", home / "model.yaml", _ADMIN_USER, admin_password)
     _wait(f"http://127.0.0.1:{_API_PORT}/ready", 600)
     assignments = job_assignments(work / "access.yaml", [username for username, _ in _USERS])
     for username, password in _USERS:
         body = json.dumps({"username": username, "password": password}).encode()
-        user_id = json.loads(_admin("POST", "/admin/users/", body, "application/json"))["id"]
+        created = _admin("POST", "/admin/users/", body, "application/json", admin_password)
+        user_id = json.loads(created)["id"]
         for assignment in assignments.get(username, []):
             grant = json.dumps(assignment).encode()
-            _admin("POST", f"/admin/users/{user_id}/assignments", grant, "application/json")
+            _admin(
+                "POST",
+                f"/admin/users/{user_id}/assignments",
+                grant,
+                "application/json",
+                admin_password,
+            )
     print("ready")
 
 

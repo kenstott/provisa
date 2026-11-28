@@ -102,6 +102,7 @@
     "openAsQueryFocused": "The search or focus neighbourhood isn’t expressible as one query yet.",
     "openAsQueryCompiling": "Compiling the query…",
     "openAsQueryNoCypher": "This query has no Cypher form.",
+    "openAsQueryCypherOnly": "All hops is a Cypher query: open it as Cypher.",
     "layersMenu": "Layers",
     "termsMenu": "Terms",
     "menuAll": "all",

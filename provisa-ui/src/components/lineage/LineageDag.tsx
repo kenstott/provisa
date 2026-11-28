@@ -26,7 +26,7 @@ import { CONTROL_ICON } from "../provisa-graph/CanvasControls";
 import type { GraphCommandButton } from "../provisa-graph/GraphControls";
 import { ProvisaGraph, type GraphHover } from "../provisa-graph/ProvisaGraph";
 import type { DescribeColumn } from "./column-descriptions";
-import { buildLineageModel } from "./lineage-layout";
+import { buildLineageModel, edgeWords } from "./lineage-layout";
 import type { LineageLinks } from "./lineage-links";
 import { lineageSpec, lineageTrace, type LineageWords } from "./lineageSpec";
 
@@ -76,8 +76,7 @@ export function LineageDag({
   const { t } = useTranslation();
   const words = useMemo<LineageWords>(
     () => ({
-      reported: t("lineageDag.reportedEdge"),
-      columns: (count) => t("lineageDag.columns", { count }),
+      ...edgeWords(t),
       unused: (count) => t("lineageDag.unused", { count }),
       materialized: t("lineageDag.materialized"),
       feedbackCycle: t("lineageDag.feedbackCycle"),

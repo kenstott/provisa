@@ -5,6 +5,7 @@
     "reportedEdge": "segnalato da OpenLineage",
     "columns_one": "{{count}} colonna",
     "columns_other": "{{count}} colonne",
+    "via": "tramite {{views}}",
     "unused": "+{{count}} inutilizzate",
     "materialized": "materializzata",
     "feedbackCycle": "in un ciclo di retroazione",

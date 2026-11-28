@@ -22,7 +22,7 @@ import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
 import type { GraphData, LayoutKind, NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
 import { GroundIcon } from "../GroundIcon";
-import { kindKey, labelClass, nodeLook, type Look } from "./nodeLook";
+import { kindKey, labelClass, lookColour, nodeLook, type Look } from "./nodeLook";
 import { hoverBody } from "./hoverBody";
 import { GLYPH_OUTLINE, glyphClip, glyphPoints } from "./glyph";
 
@@ -189,9 +189,9 @@ export function GraphLegend({ graph }: { graph: GraphData }) {
               // A ring's colour is its border; every other shape is filled.
               style={
                 l.shape === "torus"
-                  ? { borderColor: `var(--p3d-${l.colour})` }
+                  ? { borderColor: lookColour(l.colour) }
                   : {
-                      background: `var(--p3d-${l.colour})`,
+                      background: lookColour(l.colour),
                       ...(outline ? { clipPath: glyphClip(outline) } : {}),
                     }
               }

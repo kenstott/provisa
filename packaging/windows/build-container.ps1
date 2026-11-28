@@ -79,7 +79,8 @@ Copy-Item (Join-Path $ScriptDir 'provisa.ico')            $BuildDir
 # -- Core images: fetched on demand, NOT bundled ------------------------------
 # The ~1.9 GB core image tarballs would push this installer past GitHub's 2 GB
 # release-asset limit. Per the "separate optional download" design, install-container.ps1
-# fetches provisa-core-images-amd64-<VERSION>.zip from the release at install time
+# fetches the core image assets listed in provisa-core-images-amd64-<VERSION>.sha256 from the
+# release at install time
 # (or uses a local images/ dir dropped beside the installer for airgap). We only
 # stamp the version so the installer knows which release to pull from.
 $Version = if ($env:VERSION) { $env:VERSION } else { 'dev' }

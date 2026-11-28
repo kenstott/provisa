@@ -22,25 +22,14 @@
 //
 // Pure: no cytoscape here. The component turns these into elements and positions.
 
-import type {
-  LineageEdge,
-  LineageGraphData,
-  LineageNative,
-  LineageNode,
-} from "../../api/lineage";
+import type { TFunction } from "i18next";
+import type { LineageEdge, LineageGraphData, LineageNative, LineageNode } from "../../api/lineage";
 import { SOURCE_TYPES } from "../../pages/sources/constants";
 import { shownSourceType, sourceTypeLabel } from "../../pages/sources/sourceHelpers";
 import { sourceLogoImage } from "../sourceLogoMarks";
 
 export type Role =
-  | "source"
-  | "intermediate"
-  | "output"
-  | "command"
-  | "dataset"
-  | "native"
-  | "job"
-  | "external";
+  "source" | "intermediate" | "output" | "command" | "dataset" | "native" | "job" | "external";
 
 /** How a field of each role is typeset — one definition for the DAG and its legend. */
 export interface RoleStyle {
@@ -208,7 +197,11 @@ export function buildLineageModel(
     if (n.relation && (n.kind === "job" || n.kind === "external")) {
       const what = n.kind === "job" ? options.reportedWords?.job : options.reportedWords?.outside;
       const name = n.label ?? n.relation;
-      return { id: boxId(n.relation), relation: n.relation, label: what ? `${name} · ${what}` : name };
+      return {
+        id: boxId(n.relation),
+        relation: n.relation,
+        label: what ? `${name} · ${what}` : name,
+      };
     }
     const native = n.relation ? natives[n.relation] : undefined;
     if (n.relation && native)
@@ -606,20 +599,41 @@ export function transformLabel(e: Pick<LineageEdge, "transform" | "ops" | "origi
     .join(" ");
 }
 
+/** The words a drawn edge says beside its transforms, already translated. Transform names (SUM,
+ *  CAST) are written as the SQL names them and are not among these. */
+export interface EdgeWords {
+  /** REQ-2229: "reported by OpenLineage" */
+  reported: string;
+  /** "<n> columns", plural per the language */
+  columns: (count: number) => string;
+  /** "via <views>": the views an edge reads through, already joined */
+  via: (views: string) => string;
+}
+
+/** The edge words in ``t``'s language: plain i18next, no React. */
+export function edgeWords(t: TFunction): EdgeWords {
+  return {
+    reported: t("lineageDag.reportedEdge"),
+    columns: (count) => t("lineageDag.columns", { count }),
+    via: (views) => t("lineageDag.via", { views }),
+  };
+}
+
 /** The text a drawn edge carries: its transforms (and, when several columns roll into it, their
  * count) and, when it reads through views, their names; REQ-2229: and, when an OpenLineage event
  * reported it, that. */
 export function edgeText(
   e: Pick<LineageDrawnEdge, "label" | "count" | "via" | "reported">,
-  reportedWord = "",
+  words: EdgeWords,
 ): string {
   // A reported edge's own words fill the gap between two boxes; a count beside them is clipped.
   const what =
     e.count > 1 && !e.reported
-      ? [e.label, `${e.count} columns`].filter(Boolean).join(" · ")
+      ? [e.label, words.columns(e.count)].filter(Boolean).join(" · ")
       : e.label;
-  const text = e.via.length > 0 ? [what, `via ${e.via.join(", ")}`].filter(Boolean).join(" ") : what;
-  return e.reported ? [text, reportedWord].filter(Boolean).join(" · ") : text;
+  const text =
+    e.via.length > 0 ? [what, words.via(e.via.join(", "))].filter(Boolean).join(" ") : what;
+  return e.reported ? [text, words.reported].filter(Boolean).join(" · ") : text;
 }
 
 /** REQ-2116: the height of a native box's head -- one line per address part, the logo beside. */

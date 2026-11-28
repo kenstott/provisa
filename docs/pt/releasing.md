@@ -55,8 +55,8 @@ Cada release publica os seguintes assets, todos anexados ao GitHub Release (o wh
 | `Provisa-Container-<tag>-windows-x64.exe` | Upgrade de nível container Windows x64 (WSL2 + Trino) |
 | `provisa-jdbc-<tag>.jar` | Driver JDBC — Tableau, PowerBI, DBeaver |
 | `provisa_client-<pep440>-py3-none-any.whl` | Cliente Python (também PyPI) |
-| `provisa-core-images-<tag>.tar.gz` | Tarballs de imagem dos Serviços Core (arm64, air-gapped) |
-| `provisa-core-images-amd64-<tag>.zip` | Imagens dos Serviços Core (amd64, nível container Windows / air-gap) |
+| `provisa-core-images-<arch>-<tag>.sha256` | Manifesto das imagens dos Serviços Core (arm64, amd64): cada asset de imagem com seu sha256 |
+| `provisa-core-image-<name>-<arch>-<tag>.tar.gz` | Uma imagem dos Serviços Core (arm64, amd64; air-gap); uma imagem de 1 GiB ou mais é publicada como `.part1`, `.part2`, ... |
 | `provisa-obs-images-<tag>.tar.gz` | Imagens da Stack de Observabilidade (opcional) |
 | `provisa-demo-images-<tag>.tar.gz` | Imagens do Pacote de Dados de Demonstração (opcional) |
 | `provisa-trino-plugins-<tag>.tar.gz` | Conectores do Motor de Coordenação (SharePoint, Splunk, File) |

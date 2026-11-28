@@ -71,8 +71,9 @@ variable "network_cidr" {
 variable "provisa_version" {
   description = <<-EOT
     Provisa release version (e.g. v0.1.0-alpha.271). Must match a published GitHub
-    release. Each VM curls the matching AppImage, core-images zip
-    (provisa-core-images-amd64-<version>.zip) and trino-plugins tarball directly
+    release. Each VM curls the matching AppImage, core image assets
+    (provisa-core-images-amd64-<version>.sha256 and every asset it lists) and
+    trino-plugins tarball directly
     from that release at boot, and exports PROVISA_VERSION so first-launch finds
     them locally in /opt (airgap load path).
   EOT

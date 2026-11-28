@@ -102,6 +102,7 @@
     "openAsQueryFocused": "עדיין אי אפשר לבטא את סביבת החיפוש או המיקוד כשאילתה אחת.",
     "openAsQueryCompiling": "מהדר את השאילתה…",
     "openAsQueryNoCypher": "לשאילתה זו אין צורת Cypher.",
+    "openAsQueryCypherOnly": "כל הדילוגים היא שאילתת Cypher: פתחו אותה כ-Cypher.",
     "layersMenu": "שכבות",
     "termsMenu": "מונחים",
     "menuAll": "הכול",

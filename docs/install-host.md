@@ -120,6 +120,8 @@ For `--assets-dir`, put these files from the release in one directory. Names are
 - `provisa_notebook-0.1.0a511-py3-none-any.whl`
 - `provisa_duckdb_ext-<version>-py3-none-manylinux_2_28_x86_64.whl`
 - `provisa-trino-plugins-v0.1.0-alpha.511.tar.gz`
+- `provisa-core-images-amd64-v0.1.0-alpha.511.sha256`, the manifest of the release's core image assets
+- `provisa-core-image-zaychik-local-amd64-v0.1.0-alpha.511.tar.gz`, the Zaychik image. An image of 1 GiB or more is published as `.part1`, `.part2` and so on in its place; put every part the manifest lists in the directory.
 
 With `--ssh`, copy the directory to the host and run the script there instead. The script refuses `--assets-dir` together with `--ssh` because the directory would have to exist on the remote machine.
 

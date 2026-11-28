@@ -26,7 +26,7 @@ variable "zone" {
 variable "provisa_version" {
   description = <<-EOT
     Provisa release version (e.g. v0.1.0-alpha.289). Must match a published GitHub
-    release. The control-plane VM curls the matching AppImage, core-images zip and
+    release. The control-plane VM curls the matching AppImage, core image assets and
     trino-plugins tarball directly from that release at boot.
   EOT
   type        = string

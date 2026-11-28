@@ -373,15 +373,12 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
         "federation_engine": engine,
         "auth": {
             # Password auth with SCRAM-SHA-256 (REQ-1394), so pgspec's auth tests prove a password
-            # rather than meet trust mode. The break-glass account creates the job's one user
-            # (CONFORMANCE_USER) once the server is up; that user is org_admin by default.
+            # rather than meet trust mode. The instance's org_admin, seated by first-run setup
+            # (scripts/seed_org_admin.py, REQ-1264), creates the job's one user (CONFORMANCE_USER)
+            # once the server is up; that user is org_admin by default.
             "provider": "basic",
             "scram": True,
             "jwt_secret": "${env:CONFORMANCE_JWT_SECRET}",
-            "superuser": {
-                "username": "${env:PROVISA_SUPERUSER_USERNAME}",
-                "password": "${env:PROVISA_SUPERUSER_PASSWORD}",
-            },
             "assignments_source": "provisa",
             "default_assignments": [{"domain_id": "*", "role_id": "org_admin"}],
             # No rule: the control plane holds the assignments, so a sign-in acts only as a role

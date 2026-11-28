@@ -55,8 +55,8 @@ git tag v1.2.3 && git push origin v1.2.3
 | `Provisa-Container-<tag>-windows-x64.exe` | Обновление уровня контейнера Windows x64 (WSL2 + Trino) |
 | `provisa-jdbc-<tag>.jar` | Драйвер JDBC — Tableau, PowerBI, DBeaver |
 | `provisa_client-<pep440>-py3-none-any.whl` | Python-клиент (также в PyPI) |
-| `provisa-core-images-<tag>.tar.gz` | Tar-архивы образов Core Services (arm64, изолированно) |
-| `provisa-core-images-amd64-<tag>.zip` | Образы Core Services (amd64, уровень контейнера Windows / изоляция) |
+| `provisa-core-images-<arch>-<tag>.sha256` | Манифест образов Core Services (arm64, amd64): каждый ассет образа и его sha256 |
+| `provisa-core-image-<name>-<arch>-<tag>.tar.gz` | Один образ Core Services (arm64, amd64; изоляция); образ от 1 GiB публикуется частями `.part1`, `.part2`, ... |
 | `provisa-obs-images-<tag>.tar.gz` | Образы стека наблюдаемости (опционально) |
 | `provisa-demo-images-<tag>.tar.gz` | Образы пакета демо-данных (опционально) |
 | `provisa-trino-plugins-<tag>.tar.gz` | Коннекторы Coordination Engine (SharePoint, Splunk, File) |
