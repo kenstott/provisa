@@ -103,13 +103,21 @@ the group's id (one hue per domain, everywhere). A collapsed group keeps its box
 least size; lines to its members end on it, dashed. Under the lanes preset each lane is boxed and
 titled the same way.
 
+A group's box is at least as wide as its title, with 8px clear of the rounded corners each side
+(`groupMinWidth`; REQ-2239, amended 2026-11-28). ELK is given that width as the group's least
+width, its nodes centred across it (`groupSizeOptions`), and the drawn box takes the same width
+(`min-width`), widened evenly round its nodes, so a title never runs past its box's sides and a
+neighbour never touches the box.
+
 ## Canvas
 
 - A plain canvas in the canvas token: no dot grid (maintainer, 2026-11-11).
 - How a graph opens, and Reset view, fit by the diagram's drawn extent, below the legend
-  (`fitClear`). The whole diagram is fitted while the
-  zoom stays at 0.6 or more (`GRAPH_READABLE_ZOOM`; REQ-2239, amended 2026-11-28); a bigger diagram is drawn at the readable zoom from
-  its top (and, wider than the canvas, its left) and scrolls: the wheel scrolls it down, Shift with
+  (`fitClear`). The opening zoom is held between 0.6 (`GRAPH_READABLE_ZOOM`) and 1.0
+  (`GRAPH_OPENING_MAX_ZOOM`, natural size; REQ-2239, amended 2026-11-28). A diagram that would fit
+  larger than natural size opens at natural size, centred: a small graph is never magnified, and
+  the reader zooms in by hand. One that fits between 0.6 and 1.0 opens fitted. A bigger diagram is
+  drawn at the readable zoom from its top (and, wider than the canvas, its left) and scrolls: the wheel scrolls it down, Shift with
   the wheel or a trackpad's sideways swipe across (at its end the page scrolls); a pinch or the
   wheel with Ctrl or Cmd held zooms about the pointer.
 - A graph's focus is the node it is about, given as `opensOn`. A term's graph has its term as
@@ -127,7 +135,10 @@ titled the same way.
   A diagram that fits opens as fitted. So does a graph with no focus, or with a focus it does not
   draw.
 - The fit control fits the entire image, below the legend, however small that makes it
-  (`fitWhole`; REQ-2239, FIT MEANS THE WHOLE IMAGE): the readable floor is not applied.
+  (`fitWhole`; REQ-2239, FIT MEANS THE WHOLE IMAGE): neither the readable floor nor the
+  natural-size cap is applied.
+- A resize keeps the view's mode (REQ-2277): a graph opened whole is fitted whole again at no
+  more than natural size; one fitted by the fit control is fitted whole again unbounded.
 - A graph being laid out says so (REQ-2239, amended, A GRAPH BEING LAID OUT SAYS SO): from the
   moment a layout starts (on open, and on any change of what is drawn or how: preset, filter,
   depth, saved places, Reset view's relayout) until every node has its place and the opening fit
@@ -170,7 +181,7 @@ titled the same way.
 Spacing is tight (REQ-2239, amended 2026-11-28): the flow preset's nodes 20px apart, its layers at
 least 72px (more where a line's label needs it, `layerGap`); the layered preset's 32px and 90px;
 lanes 44px apart, a lane's nodes 8px; a group's box 16px round its nodes (ELK keeps that room and 30px
-above for the title).
+above for the title), and at least its title's width (`groupMinWidth`, under Groups).
 
 - `layered`: ELK layered (`elkLayout.ts`, Provisa's adapter around elkjs, registered as
   `provisa-elk`), upward, groups laid out with their children; then nodes without edges
