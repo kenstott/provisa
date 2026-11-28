@@ -8,8 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// Maintainer 2026-11-28: every query forwarded into the Cypher explorer runs at once, with no flag
-// asking it to, exactly once per navigation: not again on a re-render, nor on back and forward.
+// REQ-1159 (amended 2026-11-28): every query forwarded into the Cypher explorer runs at once, with
+// no flag asking it to, exactly once per navigation: not again on a re-render, nor on back and
+// forward. A held one (a command that writes, or parameter placeholders to fill) opens unrun.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -42,6 +43,12 @@ vi.mock("../components/graph/Neo4jExportModal", () => ({ Neo4jExportModal: () =>
 import { GraphPage } from "../pages/GraphPage";
 import { OpenAsQuery } from "../components/graph3d/OpenAsQuery";
 import { ChatArtifact } from "../components/ChatArtifact";
+import {
+  commandQueryLink,
+  type CommandCall,
+  type ServedCommand,
+} from "../components/commands/commandQueries";
+import { explorerHandoff } from "../lib/explorerHandoff";
 
 const QUERY = "MATCH (t:Ontology:Terms)-[r:KIND_OF]->(b:Ontology:Terms) RETURN t, r, b";
 
@@ -71,6 +78,38 @@ function app(from: React.ReactElement) {
       </MemoryRouter>
     </MantineProvider>,
   );
+}
+
+/** A button that hands ``state`` to the Graph page. */
+function HandOff({ state }: { state: Record<string, unknown> }) {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate("/graph", { state })}>hand off</button>;
+}
+
+const SERVED: ServedCommand = {
+  command: "refund_order",
+  domain_id: "sales",
+  graphql_root: "Mutation",
+  graphql_field: "sales__refundOrder",
+  names: { sql: "refund_order", cypher: "refund_order", rest: "refund_order" },
+};
+const callOf = (kind: CommandCall["kind"]): CommandCall => ({
+  name: "refund_order",
+  kind,
+  arguments: [{ name: "order_id", type: "Int" }],
+});
+const commandState = (kind: CommandCall["kind"]) =>
+  commandQueryLink("cypher", callOf(kind), SERVED, null, {
+    order_id: { kind: "scalar", value: 7 },
+  }).state;
+
+/** Settle, then say whether ``query`` is in the editor and never ran. */
+async function openedUnrun(query: string) {
+  await waitFor(() =>
+    expect(screen.getByTestId("graph-query-block")).toHaveTextContent(query),
+  );
+  await act(() => new Promise((r) => setTimeout(r, 50)));
+  expect(runsOf(query)).toBe(0);
 }
 
 /** Settle, then say whether ``query`` ran exactly once. */
@@ -131,5 +170,24 @@ describe("GraphPage — a forwarded query runs once, unasked", () => {
     await screen.findByTestId("x-open-as-query");
     act(() => screen.getByText("forward").click());
     await ranOnce(QUERY);
+  });
+
+  it("runs a command's read CALL once", async () => {
+    app(<HandOff state={commandState("query")} />);
+    fireEvent.click(screen.getByText("hand off"));
+    await ranOnce("CALL refund_order(7)");
+  });
+
+  it("opens a command's write CALL unrun, waiting for Run", async () => {
+    app(<HandOff state={commandState("mutation")} />);
+    fireEvent.click(screen.getByText("hand off"));
+    await openedUnrun("CALL refund_order(7)");
+  });
+
+  it("opens a query held for its parameter placeholders unrun, waiting for Run", async () => {
+    const query = "MATCH (n:Clients) WHERE n._nf_region = '<region>' RETURN n LIMIT 25";
+    app(<HandOff state={explorerHandoff("/graph", { query }, "parameters")} />);
+    fireEvent.click(screen.getByText("hand off"));
+    await openedUnrun(query);
   });
 });

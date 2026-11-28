@@ -23,6 +23,7 @@ import type { ActionArg } from "../../api/actions";
 import type { MetaReader } from "../../api/metaGraph";
 import type { QueryLink, RelationshipSurface } from "../relationships/relationshipQueries";
 import { toIrType } from "../../irTypes";
+import { explorerHandoff } from "../../lib/explorerHandoff";
 
 /** A command the role's GraphQL schema offers, as /data/graph-schema lists it. */
 export interface ServedCommand {
@@ -223,7 +224,11 @@ export function commandQueryLink(
       const list = args.map(([, v]) => cypherLiteral(plainValue(v))).join(", ");
       return {
         to: "/graph",
-        state: { query: `CALL ${nameIn(served, "cypher")}(${list})` },
+        state: explorerHandoff(
+          "/graph",
+          { query: `CALL ${nameIn(served, "cypher")}(${list})` },
+          write ? "write" : null,
+        ),
       };
     }
     case "graphql": {

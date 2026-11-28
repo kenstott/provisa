@@ -8,16 +8,23 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-/** The explorers that run every query they are handed: the Graph page, as Cypher and as SPARQL
- * (maintainer 2026-11-28). They take no autoRun. */
-const RUNS_EVERY_HANDOFF = new Set(["/graph", "/sparql"]);
+/** Why a handed-off query opens unrun, waiting for Run (REQ-1159, amended 2026-11-28): it is a
+ * command that writes, or it still carries parameter placeholders the user must fill
+ * (REQ-2252). */
+export type ExplorerHold = "write" | "parameters";
 
-/** ``payload`` as router state for the explorer at ``route``: the explorers that run only when
- * asked are asked (``run``); the Graph page runs it whatever it is told. */
+/** The explorers that run every query they are handed unless it is held: the Graph page, as
+ * Cypher and as SPARQL (REQ-1159). They take no autoRun. */
+const RUNS_UNLESS_HELD = new Set(["/graph", "/sparql"]);
+
+/** ``payload`` as router state for the explorer at ``route``, held for ``hold`` or, when null,
+ * to run. The Graph page runs it unless it carries ``hold``; the other explorers run it only
+ * when told ``autoRun``. */
 export function explorerHandoff(
   route: string,
   payload: Record<string, unknown>,
-  run: boolean,
+  hold: ExplorerHold | null,
 ): Record<string, unknown> {
-  return RUNS_EVERY_HANDOFF.has(route) ? payload : { ...payload, autoRun: run };
+  if (RUNS_UNLESS_HELD.has(route)) return hold === null ? payload : { ...payload, hold };
+  return { ...payload, autoRun: hold === null };
 }

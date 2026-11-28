@@ -274,7 +274,7 @@ export function NlPage() {
         navigate(route.path);
         return;
       }
-      navigate(route.path, { state: explorerHandoff(route.path, { [route.stateKey]: _query }, true) });
+      navigate(route.path, { state: explorerHandoff(route.path, { [route.stateKey]: _query }, null) });
     },
     [navigate],
   );

@@ -244,15 +244,25 @@ describe("a parameterized table's query links", () => {
     return opened();
   };
 
-  it("Cypher binds each parameter as an _nf_ condition, handed with no autoRun (the Graph page runs it)", async () => {
+  it("Cypher binds each parameter as an _nf_ condition, held for its parameters (REQ-1159)", async () => {
     expect(await open("cypher")).toEqual({
       to: "/graph",
       state: {
         query:
           "MATCH (n:Clients) WHERE n._nf_region = '<region>' AND n._nf_since = '<since>' " +
           "RETURN n LIMIT 25",
+        hold: "parameters",
       },
     });
+  });
+
+  it("SPARQL carries no parameter placeholder, so it is not held (REQ-1159)", async () => {
+    const got = await open("sparql");
+    expect(got.to).toBe("/sparql");
+    expect(got.state).not.toHaveProperty("hold");
+    expect(got.state).not.toHaveProperty("autoRun");
+    expect(got.state.query).not.toContain("<region>");
+    expect(got.state.query).not.toContain("<since>");
   });
 
   it("SQL binds each parameter as a condition on its column", async () => {

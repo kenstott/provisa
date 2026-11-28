@@ -734,7 +734,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             // A bound value goes to the explorer as the next statement's values ($1).
             const handed = step.openQuery.stateKey === "params" ? [text] : text;
             navigate(route, {
-              state: explorerHandoff(route, { [step.openQuery.stateKey]: handed }, true),
+              state: explorerHandoff(route, { [step.openQuery.stateKey]: handed }, null),
             });
           }
           await nextPaint();
@@ -764,7 +764,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             // Land on the explorer with the branch's demo query pre-filled + auto-run,
             // exactly as NlPage's "Open in X" button does.
             const { stateKey, query } = BRANCH_NAV[step.openBranch];
-            navigate(route, { state: explorerHandoff(route, { [stateKey]: query }, true) });
+            navigate(route, { state: explorerHandoff(route, { [stateKey]: query }, null) });
           } else {
             navigate(route);
           }

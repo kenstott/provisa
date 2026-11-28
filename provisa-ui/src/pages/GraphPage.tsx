@@ -74,6 +74,7 @@ import { buildDropExpansion, nativeFilterClauses, withExpansion } from "./graph-
 import { inSelectedDomains } from "../components/graph/dropPath";
 import { useFramePaths, usePathScope } from "./use-frame-paths";
 import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
+import type { ExplorerHold } from "../lib/explorerHandoff";
 import { useMaxNodes } from "../components/graph/graph-drawing";
 import {
   cypherError,
@@ -126,15 +127,17 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   // A view a navigation asks for, by frame: applied by the frame once per seq.
   const [frameViews, setFrameViews] = useState<Record<string, FrameView>>({});
   const viewSeqRef = useRef(0);
-  useNavPayload<{ query?: string; view?: GraphView }>((payload) => {
+  useNavPayload<{ query?: string; hold?: ExplorerHold; view?: GraphView }>((payload) => {
     const { maxNodes: requestedMax, ...frameView } = payload.view ?? {};
     if (requestedMax !== undefined) setMaxNodes(requestedMax);
     const view: FrameView | undefined =
       Object.keys(frameView).length > 0 ? { ...frameView, seq: ++viewSeqRef.current } : undefined;
     if (payload.query) {
-      // Every query handed to the explorer runs, once per navigation (maintainer 2026-11-28).
       const query = payload.query;
-      setForwarded((prev) => ({ query, seq: (prev?.seq ?? 0) + 1, view }));
+      // REQ-1159: a handed query runs, once per navigation, unless it is held (a command that
+      // writes, or parameter placeholders to fill): then it fills the editor, waiting for Run.
+      if (payload.hold) setHistoryQuery(query);
+      else setForwarded((prev) => ({ query, seq: (prev?.seq ?? 0) + 1, view }));
       return;
     }
     // No query: the view is for the frame on screen, the newest one, and its query is kept.

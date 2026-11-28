@@ -356,7 +356,7 @@ export function relationshipQueryLinks(
 ): { surface: RelationshipSurface; link: QueryLink }[] {
   const { reader, graph, vocabulary } = surfaces;
   const run = (to: string, key: string, text: string | null): QueryLink | null =>
-    text === null ? null : { to, state: explorerHandoff(to, { [key]: text }, true) };
+    text === null ? null : { to, state: explorerHandoff(to, { [key]: text }, null) };
   const built: Record<RelationshipSurface, QueryLink | null> = {
     cypher: graph ? run("/graph", "query", relationshipCypher(rel, graph)) : null,
     sql: reader && readsTables(rel, reader) ? run("/sql", "sql", relationshipSql(rel)) : null,

@@ -209,10 +209,10 @@ describe("a command that writes", () => {
     }
   });
 
-  it("Cypher: handed with no autoRun, as the Graph page runs every query it is handed", () => {
+  it("Cypher: held as a write, so the Graph page opens it unrun (REQ-1159)", () => {
     expect(commandQueryLink("cypher", REFUND, served, reader, given)).toEqual({
       to: "/graph",
-      state: { query: "CALL refund_order(7)" },
+      state: { query: "CALL refund_order(7)", hold: "write" },
     });
   });
 
