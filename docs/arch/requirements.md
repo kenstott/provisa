@@ -2782,7 +2782,7 @@ Naming convention changes (global, source, or table level) reflected immediately
 
 ### REQ-259 · Compiler & Schema {#REQ-259}
 
-**Status:** ⚙ in-progress · **Priority:** MAY · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MAY · **Type:** behavioral
 
 Apollo Federation v2 subgraph support: when enabled, Provisa generates a Federation v2 compliant schema with @key directives on entity types (derived from primary keys), _service and _entities root fields, and batch entity resolution. Provisa can be composed into an Apollo Gateway/Router supergraph. Entity resolution respects RLS, masking, and role-based visibility. Disabled by default. (Amended 2026-10-21, DECLARED ROLE:) A subgraph is an endpoint with a declared role: a supergraph cannot pass its caller's identity, so a steward declares, per organization, the role the subgraph serves as (federation.role, beside federation.enabled and federation.subgraph_name, in config.yaml and on the admin settings page). The router authenticates as an ordinary client acting as that role; _service, _entities and every field the router fetches run through the governed pipeline as the declared role, so its row rules, masks and visibility hold in _entities as in any other read. @key on each entity type names its designated primary-key columns.
 
@@ -11142,7 +11142,7 @@ Hosted documentation surface: product docs and API reference published on Cloudf
 
 ### REQ-1052 · Onboarding & Entry Points {#REQ-1052}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-action) map to the specified onboarding paths: "Try it now" initiates an anonymous ephemeral sandbox session ([REQ-1034](#REQ-1034)/1036, no signup required); [SUPERSEDED by a private commercial requirement, 2026-10-03 -- [REQ-1017](#REQ-1017) is superseded; on a deployment that sells the org, org creation waits at awaiting_checkout until a subscription pays for it. Kept here for history; do not implement against it.] "Sign up free" routes to Firebase self-serve org provisioning ([REQ-1017](#REQ-1017)) [END SUPERSEDED BLOCK]; "Contact sales" triggers SES/SMTP email delivery to sales ([REQ-1330](#REQ-1330)). (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2286](#REQ-2286).)
 
@@ -13112,7 +13112,7 @@ In a clustered Provisa deployment, only the primary node may modify the config r
 
 ### REQ-1230 · Clustered Deployment Configuration {#REQ-1230}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** infrastructure
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
 
 Secondary nodes in a cluster deployment run application tier only (Provisa API/UI + in-process protocol listeners on ports 3000, 5439, 7687, etc.). They do NOT run local postgres, redis, minio, or trino instances. Instead, control-plane, cache, object-store, and Trino-coordinator endpoints are repointed at the primary via intra-cluster networking. Secondary topology is selected via a standalone compose-secondary.yml base (not an additive overlay, since compose depends_on cannot be removed by overlay merge). (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2288](#REQ-2288).)
 
@@ -13482,7 +13482,7 @@ Helm provisa Service must expose all protocol endpoints served by the API contai
 
 ### REQ-1259 · Kubernetes Deployment {#REQ-1259}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** infrastructure
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
 
 Helm chart cert provisioning must be a values.yaml toggle: supply an existing TLS Secret name, or specify cert-manager issuer configuration to auto-provision certificates. Self-signed generation via openssl is NOT used; the certificate source is Kubernetes-native (Secret or cert-manager). (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2289](#REQ-2289).) (Amended 2026-11-27 after verification. The scenario's stray last line about a fully-seeded org is removed.)
 
@@ -13930,7 +13930,7 @@ The UI may only place an ASSIGNED role in the X-Provisa-Role header. When auth i
 
 ### REQ-1296 · Authentication {#REQ-1296}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 A claimed platform-admin slot lands the administrator in a populated deployment, not an empty one. The bootstrap org id is 'root' and its tenant schema is org_root. This is the value the control-plane resolver returns ([REQ-1286](#REQ-1286)), not a literal layered over it, so there is still one source of truth for the default org id. It is provisioned with the demo assets (registered sources, tables, the ops and meta domains, relationships and views) before the first sign-in completes. The claiming identity is written as a member of 'root' holding platform_admin — so they administer root as well as the deployment — and 'root' is their active_org_id, so the first screen after the welcome modal renders real data and a real role. (Amended 2026-11-27 by the maintainer. The admin who claims the install holds platform_admin, which has no data capability, and is also seated with a data role in root, so the role selector offers that role and the demo tables show under it. Root carries the demo assets (sources, tables, the ops and meta domains) before the first sign-in, and a test proves it.)
 
@@ -13968,7 +13968,7 @@ A backup platform_admin is made in two steps, never by a second bootstrap claim.
 
 ### REQ-1299 · Authorization {#REQ-1299}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 The deployment can never be left with zero platform_admins. Revoking the platform_admin role from the last holder, and deleting or disabling that holder's account, are both rejected. While exactly one platform_admin exists the admin overview and the health endpoint carry a standing warning naming the risk and the two-step fix ([REQ-1298](#REQ-1298)). It is a warning, not a block, because a solo operator forced to invent a second account produces ceremony rather than redundancy. Recovery when the sole holder is unreachable runs at the infrastructure boundary that already exists - a grant command executed on the host, plus the SSO-independent break-glass account of [REQ-1264](#REQ-1264). No long-lived recovery code is minted at claim time, because a bearer secret conferring permanent deployment-wide administration is a larger standing risk than the outage it insures against. (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2291](#REQ-2291).)
 
@@ -14028,7 +14028,7 @@ When an org's administrators are unreachable, recovery runs through the platform
 
 ### REQ-1304 · Authorization {#REQ-1304}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Pressing delete on an organization downloads that org's configuration before the deletion is confirmed. The download is the live config YAML built for that org ([REQ-164](#REQ-164) build_live_config_yaml, resolved through the org's OrgRuntime) - its registered sources, tables, relationships, views, materializations, domains, roles and grants - which is enough to recreate the org's shape later. It is configuration, not data - the rows in the tenant schema are gone for good, and the confirmation ([REQ-1300](#REQ-1300)) still says so. The download is not gated by the live_config_export opt-in - that flag exists because a normalized patch cannot stay faithful to a hand-authored config file, and this is a standalone snapshot, not a patch. A failure to build the config aborts the deletion rather than proceeding without the snapshot. (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2292](#REQ-2292).)
 
@@ -14124,7 +14124,7 @@ A single user may create at most 100 organizations. The cap is a backstop agains
 
 ### REQ-1312 · Authorization {#REQ-1312}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Deletion scrubs personal data while preserving the record that the deletion happened. Deleting an org ([REQ-1300](#REQ-1300)) drops every tenant-scoped row and cascades the control-plane rows keyed to it; what survives is the billing and usage record needed to invoice, which names the org and not a person, and the platform audit entry recording the deletion. Deleting an account ([REQ-1307](#REQ-1307)) replaces every reference to that user id - orgs.created_by, org_invites.created_by and used_by, audit attributions - with an opaque tombstone token, and erases the personal attributes on user_profile (name, email, avatar). References are tombstoned rather than nulled because org_invites.created_by is NOT NULL and because a dangling id is worse than an explicit one - the record stays referentially intact and stops identifying anyone. Audit entries are never deleted by either operation; an audit trail that erases on request is not one. (Amended 2026-11-07, THE USER DIRECTORY IS A CACHE:) user_directory (each user's display name and email, copied from the identity provider) is a cache, used to send communications and show names. Deleting a user removes that user's user_directory row, with their profile and local sign-in, and tombstones their id in the query and admin audit logs; an erasure that leaves the name, the email or the identity link behind in any of them is a defect (maintainer 2026-11-07). (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2293](#REQ-2293).)
 
@@ -19680,7 +19680,7 @@ Provisa shall document and expose the HTML crawler capability from the underlyin
 
 ### REQ-1786 · Data Discovery {#REQ-1786}
 
-**Status:** ⚙ in-progress · **Priority:** MAY · **Type:** ui
+**Status:** ✅ complete · **Priority:** MAY · **Type:** ui
 
 The create_source mutation (provisa/api/admin/schema_mutation.py) shall support an opt-in discover_tables_now flag that, when true, triggers an automatic background crawl_directory call immediately after source creation succeeds. The crawled table/file list is cached and presented to the admin on the source's Tables page as a pre-populated "discovered, not-yet-registered" state, eliminating blank-state friction of manually invoking crawl_directory per source. [SUPERSEDED by REQ-1786, 2026-11-06 -- discovery runs on every creation, for every source type; see the 2026-11-06 amendment. Kept here for history; do not implement against it.] The flag defaults to false (disabled) to avoid unrequested remote fetch/schema-inference passes on every source creation, which could be slow or noisy for large HTTP-crawled directories ([REQ-1784](#REQ-1784)/1785). The source-creation form (SourceFormFields.tsx) shall conditionally render a "Discover tables now" checkbox for file-connector sources (csv/parquet/sqlite) that, when checked, passes discover_tables_now: true to the mutation. [END SUPERSEDED BLOCK] (Amended 2026-10-03, THIS IS A PERFORMANCE AID:) Discovery at source creation exists to make the later table registration faster: the list of a source's tables is already to hand when the steward opens Register Table. It adds no capability, since registration discovers tables on demand today. (Amended 2026-11-06, DISCOVERY ON EVERY CREATION:) Creating a source of any type starts its table discovery in the background, with no flag and no checkbox: the cost is incurred when tables are registered anyway, so it is moved earlier rather than added. Register Table uses the discovered list when there is one and discovers on demand otherwise, and can discover again on request. A discovery failure is shown on the source and never refuses the creation. (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2304](#REQ-2304).)
 
@@ -21746,7 +21746,7 @@ A top-level Data Quality page (peer to Tables, Sources, etc.) OR a tab within re
 
 ### REQ-453 · API & Integration {#REQ-453}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 For all remote schema adapters (GraphQL, gRPC, OpenAPI), a root query/GET operation whose return type is a scalar (not an object or message) MUST be registered as a tracked function with `return_schema [{"name": "value", "type": <scalar_type>}]`, not as a virtual table. Object-returning operations are registered as virtual tables; scalar-returning operations are registered as tracked functions. (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2311](#REQ-2311).)
 
@@ -21912,7 +21912,7 @@ Transpilation is a compiler responsibility, never a transport responsibility. Re
 
 ### REQ-469 · Registration & Governance {#REQ-469}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Catalog preparation is centralized per query language. SQL catalog (pg_catalog served via pgwire/DBeaver), GraphQL SDL (schema introspection), and Cypher catalog (Nodes/Relationships schema) are each the responsibility of a single dedicated module. No transport implements catalog logic directly; transports consume the output of the centralized catalog module for their language. (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2312](#REQ-2312).)
 
@@ -22308,7 +22308,7 @@ Docker Compose service catalog: multiple compose file variants cover different d
 
 ### REQ-509 · Control Plane & Deployment {#REQ-509}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
 
 WSL2 Windows deployment: `start-ui.sh` and install scripts detect WSL2 environment and adjust host network bindings accordingly. Docker socket path defaults to `/var/run/docker.sock` on Linux/WSL2; detected at startup via `uname -r | grep -i microsoft`. Documented in deployment guide. `tests/e2e/test_wsl2_install.py` (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2316](#REQ-2316).) (Amended 2026-11-27 after verification. The native install detects WSL2 from /proc/version, not uname -r, and sets no Docker socket defaults; tests/e2e/test_wsl2_install.py named above does not exist.)
 
@@ -25466,7 +25466,7 @@ The data product export publishes Provisa's data products as listings in the int
 
 ### REQ-2119 · Data Catalog Integration {#REQ-2119}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Every metadata export target has an end-to-end test against the real service, and no target is complete without one. Each test publishes a snapshot through the production publish path, with no injected seam or faked transport, and reads the published entities back from the target to check them: the data product with its fields and members, the tables and columns with descriptions and governance tags, glossary terms, lineage and data-quality outcomes where the target takes them. A wiring test publishes through that same path and fails when a configured target receives nothing. Self-hostable targets (OpenMetadata, DataHub, Apache Atlas, an OpenLineage receiver) run in containers the test starts. Cloud and SaaS targets (Snowflake Horizon, BigQuery and Dataplex, Microsoft Purview, AWS DataZone, Databricks Unity Catalog, Collibra, Atlan, Alation) run against the project's own accounts, the same way the warehouse lanes do. A test that cannot reach its target fails; it is never skipped. Unit tests with faked HTTP remain for request shaping but do not count as proof that a target works. (Split 2026-11-27 after verification: the rules not yet delivered moved to [REQ-2330](#REQ-2330).)
 
@@ -27398,13 +27398,13 @@ Maintainer 2026-11-25. Extends [REQ-1494](#REQ-1494). A JSON column can declare 
 
 ### REQ-2280 · Registration & Governance {#REQ-2280}
 
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-25. The File Crawler reads files from OneDrive and Google Drive as two more transports beside file, ftp, sftp, s3, s3a and http(s), so a server or hosted install, where no desktop sync client runs, reaches files kept there. onedrive:// lists and reads through the Microsoft Graph drive API under the same Microsoft sign-in the SharePoint source uses (OneDrive for Business is a SharePoint drive), and gdrive:// through the Google Drive API under a Google service account or OAuth, as the Google Sheets source signs in (files must be shared with a service account, which owns no storage). A path or glob names the folder and files as for the other transports; only the files a glob names are read, when they are read; formats, live and replica modes and governance are the same as every other transport. Each transport has its typed connection form and its credentials are secrets. iCloud Drive offers no server API, so it is not a transport; a desktop install reads a synced iCloud, OneDrive or Google Drive folder through file://. (Amended 2026-11-26, maintainer: at query time every engine reads onedrive:// and gdrive:// files live through the Calcite file adapter, which gains OneDrive and Google Drive storage providers; Provisa passes the storage type and its configuration from the same source fields. No synced copy.) (Amended 2026-11-26 by the maintainer, drives are read with admin access. OneDrive is read app-only, an app registration with the Files.Read.All or Files.ReadWrite.All application permission reading any user's drive with no user signed in. Google Drive is read by a service account with domain-wide delegation, acting as the user it names, so a Workspace admin can read any user's Drive. Neither needs a user to sign in or a shared drive.)
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_cloud_drive_transports.py`, `tests/unit/test_cloud_drive_engine_reads.py`
 
 ## 3. Source Registration & Data Modeling
 
@@ -27512,13 +27512,13 @@ Split 2026-11-27 from [REQ-1259](#REQ-1259) (Helm certificate source: Secret or 
 
 ### REQ-2290 · Platform Admin Break-Glass Access {#REQ-2290}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Split 2026-11-27 from [REQ-1264](#REQ-1264) (Seeded break-glass platform admin account) after verification. These are the rules of [REQ-1264](#REQ-1264) not yet delivered, and [REQ-1264](#REQ-1264)'s text governs their detail. The installer generates a random break-glass password and surfaces it once, through the Terraform output or the cloud-init console, never persisting it in config. The account's password is stored as a bcrypt hash. The first login with it forces a password rotation.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_breakglass_account.py`, `tests/unit/test_sandbox_vm_terraform.py`
 
 ## 1. Access Governance & Security
 
@@ -27626,13 +27626,13 @@ Split 2026-11-27 from [REQ-1501](#REQ-1501) (Environments: Hasura structure, Lau
 
 ### REQ-2300 · Boot-Time Replica Landing {#REQ-2300}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Split 2026-11-27 from [REQ-1632](#REQ-1632) (Boot-time replicas are schema-only and idempotent) after verification. These are the rules of [REQ-1632](#REQ-1632) not yet delivered, and [REQ-1632](#REQ-1632)'s text governs their detail. Boot creates schema-only replicas and skips existing matching ones, instead of posting a full-data replace per source on every boot. This applies uniformly to every federation engine.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_boot.py`, `tests/integration/test_boot_keeps_matching_replicas_e2e.py`
 
 ## 7. Result Delivery
 
@@ -28028,25 +28028,25 @@ Split 2026-11-27 from [REQ-2141](#REQ-2141) (Term roles: Class, Property, Concep
 
 ### REQ-2335 · Data Quality Sources {#REQ-2335}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Split 2026-11-27 from [REQ-2147](#REQ-2147) (Profiler classification kinds (SSN, IBAN, cities...)) after verification. These are the rules of [REQ-2147](#REQ-2147) not yet delivered, and [REQ-2147](#REQ-2147)'s text governs their detail. Custom classification kinds exist (a regex with a named check, share, sensitive flag, mask and term), editable and deletable; an org overrides a shipped kind's share, sensitivity or mask or copies it to a custom kind; kinds are part of the model across environments.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_classification_custom_kinds.py`
 
 ## 1. Access Governance & Security
 
 ### REQ-2336 · Data Catalog Integration {#REQ-2336}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Split 2026-11-27 from [REQ-2158](#REQ-2158) (Data contracts per output port (ODPS/ODCS)) after verification. These are the rules of [REQ-2158](#REQ-2158) not yet delivered, and [REQ-2158](#REQ-2158)'s text governs their detail. A built-in promise check fails when a column's live type no longer fits its declared logicalType. Consumers see each column by its SQL alias, never the physical name.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_contract_type_check.py`, `tests/integration/test_contract_type_check_e2e.py`
 
 ## 3. Source Registration & Data Modeling
 
@@ -28064,13 +28064,13 @@ Split 2026-11-27 from [REQ-2171](#REQ-2171) (IR subtypes (inet, money, ranges...
 
 ### REQ-2338 · Profile Runs Terrain View {#REQ-2338}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Split 2026-11-27 from [REQ-2174](#REQ-2174) (3D/2D graph stage: best view, layouts, lanes, one ontology graph) after verification. These are the rules of [REQ-2174](#REQ-2174) not yet delivered, and [REQ-2174](#REQ-2174)'s text governs their detail. A connected ontology graph is read as one root field with a reach filter, each term read once and edges by id, in one round trip (2026-11-27, superseding the 2026-11-26 nesting).
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_where_relationships.py`, `tests/unit/test_ontology_nested_read_bound.py`
 
 ## 3. Source Registration & Data Modeling
 
@@ -28328,13 +28328,13 @@ Split 2026-11-27 from [REQ-2267](#REQ-2267) (@discover code sources; OpenAPI and
 
 ### REQ-2361 · Naming Convention {#REQ-2361}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Split 2026-11-27 from [REQ-194](#REQ-194) (naming authority) after verification. These are the rules of [REQ-194](#REQ-194) not yet delivered, and [REQ-194](#REQ-194)'s text governs their detail. A check refuses new name shaping outside the naming authority. Every suggestion made before an object is saved (reverse relationship alias, table and column alias, metric name, junction name) comes from the authority, in the UI and the API alike. The UI reads saved objects' names from the server's names table and never computes them.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_naming_authority_guard.py`, `tests/unit/test_naming_bypasses_py.py`, `tests/unit/test_admin_schema_wiring.py`
 
 ## 11. Platform, Infrastructure & Delivery
 

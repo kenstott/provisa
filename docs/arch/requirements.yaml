@@ -9166,7 +9166,7 @@
   - admin.md
   - api-reference.md
 - id: REQ-259
-  status: in-progress
+  status: complete
   group: 5. Query Languages, Compilation & Operations
   category: Compiler & Schema
   feature: graphql-schema
@@ -34552,7 +34552,8 @@
   - REQ-1027
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: behaviour present, no test'
 - id: REQ-1052
-  status: in-progress
+  status: complete
+  since: 2026-11
   tests:
   - provisa-ui/src/__tests__/DemoEntry.test.tsx
   group: 11. Platform, Infrastructure & Delivery
@@ -40400,7 +40401,8 @@
 
     '
 - id: REQ-1230
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Clustered Deployment Configuration
   feature: deployment-clustered
@@ -41627,7 +41629,8 @@
     '
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: behaviour present, no test'
 - id: REQ-1259
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Kubernetes Deployment
   feature: deployment-tls
@@ -43352,7 +43355,7 @@
   e2e_reason: Role filtering, error reporting, and X-Provisa-Role header placement on requests are only
     verifiable end-to-end through the full auth stack with real role assignments.
 - id: REQ-1296
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Authentication
   feature: sign-in-and-identity-bootstrap
@@ -43626,7 +43629,7 @@
   - REQ-1296
   - REQ-1297
 - id: REQ-1299
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Authorization
   feature: roles-and-capabilities-platform-admins
@@ -43968,7 +43971,7 @@
     and revocable.
   notes: 'Roadmap audit 2026-10-13: built, but not complete until it has a test: no unit test'
 - id: REQ-1304
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Authorization
   feature: organizations-administration
@@ -44488,7 +44491,7 @@
   - REQ-1271
   - REQ-1300
 - id: REQ-1312
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Authorization
   feature: organizations-administration
@@ -66967,7 +66970,8 @@
   - admin-graphql.md
 - id: REQ-1786
   value: 'Adding a new source immediately discovers its tables, with no separate crawl step needed.'
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Data Discovery
@@ -77103,7 +77107,8 @@
     the table forms rather than a top-level page, which the text allows.'
   superseded_by: REQ-1443
 - id: REQ-453
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 8. Client Access & Protocols
   category: API & Integration
   feature: connector-catalog-remote-schemas
@@ -77480,7 +77485,8 @@
     govern/route/execute pipeline is REQ-1176 and REQ-1214.'
   superseded_by: REQ-1176
 - id: REQ-469
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 3. Source Registration & Data Modeling
   category: Registration & Governance
   feature: engineering-standards-principles
@@ -78512,7 +78518,8 @@
   tests:
   - tests/unit/test_infra_requirements.py
 - id: REQ-509
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane & Deployment
   feature: deployment-compose-helm
@@ -89212,7 +89219,7 @@ Then customer_360's ODPS document and an ODCS 3.1 contract for each member table
   - REQ-1389
   notes: "Maintainer 2026-10-20, through the lead: add the internal-marketplace targets other than Snowflake (which is fine as is), scoped to an enterprise publishing internally to other data teams. Maintainer: this is data team A in enterprise 1 publishing for data team B in enterprise 1, partly just part of Provisa; the issue is when team A uses Provisa and team B does not and uses BigQuery. Maintainer: not one-off ETL flows, but the data products infra creating listings in other locations that match a data product's terminology or, if not available, align to it in spirit. Decisions: several targets per org; contracts per member table; approvers derived from roles; Alation later (no account); others tested on existing cloud accounts. Research: Dataplex data products, Purview Unified Catalog (API in preview), AWS DataZone, Alation, and ODPS/ODCS for the catalogs that import them."
 - id: REQ-2119
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -99040,7 +99047,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     when the column is read in the fake environment on DuckDB and on Trino, then each row holds an object with
     an email-shaped email and a phone-shaped phone, and the same row gives the same object on both engines.'
 - id: REQ-2280
-  status: accepted
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Registration & Governance
@@ -99062,6 +99070,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     identity, when a File Crawler source with onedrive:// and one with gdrive:// are registered on a server
     install, then each CSV is a table that answers a query the same as the same file read through file://.'
 
+  tests:
+  - tests/unit/test_cloud_drive_transports.py
+  - tests/unit/test_cloud_drive_engine_reads.py
 - id: REQ-2281
   status: accepted
   target: 2027-Q1
@@ -99277,7 +99288,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1259
 
 - id: REQ-2290
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 2. Authentication & Identity
   category: Platform Admin Break-Glass Access
@@ -99295,6 +99307,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-1264
 
+  tests:
+  - tests/unit/test_breakglass_account.py
+  - tests/unit/test_sandbox_vm_terraform.py
 - id: REQ-2291
   status: in-progress
   target: 2027-Q1
@@ -99448,7 +99463,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1501
 
 - id: REQ-2300
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 6. Execution, Routing, Caching & Performance
   category: Boot-Time Replica Landing
@@ -99464,6 +99480,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-1632
 
+  tests:
+  - tests/unit/test_boot.py
+  - tests/integration/test_boot_keeps_matching_replicas_e2e.py
 - id: REQ-2301
   status: in-progress
   target: 2027-Q1
@@ -100031,7 +100050,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2141
 
 - id: REQ-2335
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 4. Source Connectors
   category: Data Quality Sources
@@ -100048,8 +100068,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2147
 
+  tests:
+  - tests/unit/test_classification_custom_kinds.py
 - id: REQ-2336
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -100065,6 +100088,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2158
 
+  tests:
+  - tests/unit/test_contract_type_check.py
+  - tests/integration/test_contract_type_check_e2e.py
 - id: REQ-2337
   status: in-progress
   target: 2027-Q1
@@ -100083,7 +100109,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2171
 
 - id: REQ-2338
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 10. UI & Admin Surfaces
   category: Profile Runs Terrain View
@@ -100099,6 +100126,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2174
 
+  tests:
+  - tests/unit/test_where_relationships.py
+  - tests/unit/test_ontology_nested_read_bound.py
 - id: REQ-2339
   status: in-progress
   target: 2027-Q1
@@ -100519,7 +100549,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2267
 
 - id: REQ-2361
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
@@ -100536,6 +100567,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-194
 
+  tests:
+  - tests/unit/test_naming_authority_guard.py
+  - tests/unit/test_naming_bypasses_py.py
+  - tests/unit/test_admin_schema_wiring.py
 - id: REQ-2362
   status: in-progress
   target: 2026-Q4
