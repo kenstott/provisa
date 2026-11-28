@@ -30,10 +30,12 @@
 | `arg_kind` | 行为 |
 | --- | --- |
 | `column_value` | 标量；直接在请求负载中传递 |
-| `table_ref` | 惰性；Provisa 原样传递关系引用，由服务自行取数 |
-| `result_set` | 急切；Provisa 物化被引用的关系并发送其行 |
+| `table_ref` | 惰性；Provisa 传递数据表的名称，由服务自行取数 |
+| `result_set` | 急切；Provisa 读取该关系并发送其行 |
 
 `http` 和 `grpc` 命令**必须**至少声明一个 `table_ref` 或 `result_set` 参数。一个只收到标量参数的外部命令会被逐行调用一次，那就毁掉了批处理。分发器在调用时拒绝这种配置（422）。
+
+以数据表给出的关系参数，用它的逻辑名称来指明，即 SQL 语句读取它时所用的 `schema.table`（例如 `pet_store.orders`）。`result_set` 数据表会经由受治理的管道，以调用者的角色读取，因此该角色的行过滤、掩码和列可见性都会生效，并且只读取参数声明的列。物理的 `source.schema.table` 引用，或 SQL 不以其提供任何数据表的名称，都会以 HTTP 400 拒绝，并指明应有的形式。`result_set` 也可以作为查询（以相同方式执行）或 JSON 行数组给出。
 
 返回集合的命令（通过 `output_columns` 和 `return_schema` 声明）是表值函数。可在 `FROM` 子句或 `JOIN` 中使用它。
 
@@ -46,7 +48,7 @@
 - **输入（仅 result_set）：** 物化之后，Provisa 会依据所声明的列校验这些行。多出的字段、缺失的字段和类型不符都会引发 HTTP 422。
 
 - **输出：** 命令返回的行在到达调用方之前，会依据 `output_columns` 校验。
-- **窄投影：** 声明了输入契约后，物化查询**只投影那些列**（`SELECT "id", "region" FROM ...`），而不是 `SELECT *`。
+- **窄投影：** 声明了输入契约后，物化查询**只投影那些列**（`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`），而不是 `SELECT *`。
 
 ### IR 类型词汇表 {: #the-ir-type-vocabulary }
 
@@ -131,8 +133,8 @@ gRPC 变体（`enrich_grpc_set`）遵循同样的模式，只是指定 `impl_kin
 ```sql
 -- Enrich the orders relation and join the result back inline.
 SELECT o.id, o.amount, e.score, e.region_label
-FROM   orders o
-JOIN   enrich_orders('main.public.orders') e ON o.id = e.id
+FROM   pet_store.orders o
+JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
 WHERE  e.score > 0.8;
 ```
 

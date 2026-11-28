@@ -1,0 +1,32 @@
+{
+  "pageCommands": {
+    "addTable": "从某个数据源注册一张表，使其可被查询和治理。",
+    "addView": "定义视图：从 SQL 或指标计算得出的受治理数据集。",
+    "addRelationship": "声明两张表之间的连接，使查询可以沿其关联。",
+    "clearRejections": "让您已拒绝的建议重新被提出。",
+    "addSource": "将数据库、文件、API 或服务连接为表的数据源。",
+    "addCommand": "定义命令：调用方运行的操作，例如写入或函数调用。",
+    "addRole": "添加被授予权限的角色，或由用户属性派生的角色。",
+    "addDataProduct": "将表发布为数据产品，包含所有者、输出端口和合约。",
+    "productMap": "将每个数据产品、其表以及它们之间的链接绘制为一张图。",
+    "addMetric": "定义指标：每个查询都以相同方式计算的命名度量。",
+    "invite": "通过电子邮件邀请某人，并选择其拥有的角色。",
+    "glossaryDomains": "仅显示所选域的术语。",
+    "reviewsDue": "仅显示审阅日期已过的文档。",
+    "reembedAll": "重新计算使用旧模型读取的文档的搜索嵌入。",
+    "addDocument": "添加一个文档，其文本可供术语表和代理引用。",
+    "addDomain": "添加域：拥有自己所有者和权限的一组表。",
+    "addPackageRegistry": "添加代码源安装软件包所用的注册表。",
+    "addOrg": "创建拥有自己用户、数据和设置的组织。",
+    "addInvite": "邀请某人创建或加入一个组织。",
+    "addScheduledTask": "安排 Webhook 或 SQL 语句按 cron 运行。",
+    "addClassificationKind": "添加分析器可将列归入的类型。",
+    "addReport": "添加报告：ops 域的一个视图，在此页面上阅读。",
+    "addRegion": "声明区域：位于同一地点的引擎及其存储。",
+    "addContainerRegistry": "添加拉取代码解析器镜像所用的注册表。",
+    "addSecret": "存储一个配置按名称引用的密钥。",
+    "addTag": "添加标签，用于标记表、列和术语。",
+    "addEnvironment": "创建环境：模型的副本，可在合并前修改和测试。",
+    "addSyncTarget": "添加发布模型的目录。"
+  }
+}

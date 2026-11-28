@@ -76,6 +76,8 @@ import { useRequiredFields } from "../form/useRequiredFields";
 import type { SyntheticSeed } from "./syntheticSeed";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { Tip } from "../Tip";
+import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 const PROD = "prod";
 
@@ -687,18 +689,20 @@ export function EnvironmentsTab({ title }: { title: string }) {
             testId="environments-filter"
           />
         )}
-        <div className="page-actions">
+        <PageActions>
           {onList && (
-            <Button
-              variant={adding ? "outline" : "filled"}
-              aria-label={adding ? t("environmentsTab.closeForm") : undefined}
-              onClick={() => (adding ? setAdding(false) : openAdd())}
-              data-testid="env-create-open"
-            >
-              {adding ? <X size={14} /> : t("environmentsTab.newEnvironment")}
-            </Button>
+            <PageCommand description={t("pageCommands.addEnvironment")} docs="environments/">
+              <Button
+                variant={adding ? "outline" : "filled"}
+                aria-label={adding ? t("environmentsTab.closeForm") : undefined}
+                onClick={() => (adding ? setAdding(false) : openAdd())}
+                data-testid="env-create-open"
+              >
+                {adding ? <X size={14} /> : t("environmentsTab.newEnvironment")}
+              </Button>
+            </PageCommand>
           )}
-        </div>
+        </PageActions>
       </div>
       <Stack gap="md" data-testid="environments-tab">
         {/* REQ-1552: the state of the org's mirror is true of every tab here, not of the environment
@@ -815,6 +819,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
                           ]}
                           ariaLabel={t("environmentsTab.stageTitle")}
                           testId="env-stage-help"
+                          docs="environments/#stages"
                         />
                       </Group>,
                       t("environmentsTab.colRepo"),
@@ -830,6 +835,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
                           ]}
                           ariaLabel={t("environmentsTab.protectedTitle")}
                           testId="env-protected-help"
+                          docs="environments/#protected-environments"
                         />
                       </Group>,
                     ]}

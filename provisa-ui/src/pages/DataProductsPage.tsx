@@ -37,9 +37,11 @@ import {
 } from "./data-products/productSync";
 import type { DataProduct } from "../types/admin";
 import { fetchActions, type TrackedFunction } from "../api/actions";
-import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
 import { MultiSelect } from "../components/MultiSelect";
+import { TagControl } from "../components/TagControl";
+import { useDomainFilter } from "../context/DomainFilterContext";
+import { productScope } from "./data-products/productScope";
 import { useTagAssignments } from "../hooks/useTagQueries";
 import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
 import { isProductOwner } from "./data-products/productOwner";
@@ -57,6 +59,7 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { useRememberedDetail } from "../components/list/useDetailParam";
 import {
   detailListOf,
+  domainNarrowing,
   filterNarrowing,
   searchNarrowing,
   shownBy,
@@ -70,6 +73,8 @@ import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { useAuth } from "../context/AuthContext";
 import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { heldRoles } from "../lib/roles";
+import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
@@ -103,7 +108,6 @@ export function DataProductsPage() {
   };
   // REQ-2127: the list is data_products_meta, read as the user through the governed pipeline.
   const products = useMetaProducts();
-  const dataProducts = useMemo(() => products.data ?? [], [products.data]);
   const { loading, error } = products;
   const { domains } = useDomains();
   const { tables, refetch: refetchTables } = useTables(); // REQ-1634: member-table list + assignment
@@ -130,6 +134,13 @@ export function DataProductsPage() {
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
   const { selectedRoles, availableRoles, actingRoles, userId } = useAuth();
+  // REQ-1659 (amended 2026-11-28): the products and domains of this page follow the active role:
+  // every product of a domain it holds a product right in, and every product offered.
+  const scope = useMemo(
+    () => productScope(products.data ?? [], selectedRoles),
+    [products.data, selectedRoles],
+  );
+  const dataProducts = scope.products;
   const held = useMemo(
     () => heldRoles(selectedRoles, availableRoles),
     [selectedRoles, availableRoles],
@@ -188,16 +199,16 @@ export function DataProductsPage() {
         .map((tag) => ({ id: tag, label: tag })),
     [productTags],
   );
-  // The list narrowed to the products of the domains chosen; offered the domains of the products
-  // the viewer reads, since a domain with none of them would only empty the list.
-  const [domainFilter, setDomainFilter] = useState<string[]>([]);
-  const productDomainOptions = useMemo(
-    () =>
-      [...new Set(dataProducts.map((p) => p.domainId))]
-        .sort()
-        .map((domain) => ({ id: domain, label: domain })),
-    [dataProducts],
-  );
+  // REQ-1659 (amended 2026-11-28): the list is narrowed by the navbar's Domains filter, which on
+  // this page lists the scope's domains (productScope) with a selection of its own.
+  const { setProductDomains, checkedProductDomains, ensureProductDomainChecked } =
+    useDomainFilter();
+  const productDomainKey = scope.domains.join(",");
+  useEffect(() => {
+    if (products.data === null) return;
+    setProductDomains(scope.domains);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the domain SET (the joined ids), not the array identity
+  }, [productDomainKey, products.data === null, setProductDomains]);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
@@ -240,12 +251,11 @@ export function DataProductsPage() {
         (p) => tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true),
         () => setTagFilter([]),
       ),
-      filterNarrowing<DataProduct>(
+      domainNarrowing<DataProduct>(
         t,
-        domainFilter.length > 0,
-        t("dataProductsTab.domainFacetLabel"),
-        (p) => domainFilter.includes(p.domainId),
-        () => setDomainFilter([]),
+        checkedProductDomains.size > 0 ? checkedProductDomains : null,
+        ensureProductDomainChecked,
+        (p) => [p.domainId],
       ),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the setters are the page's own, fixed for its life; updateSearch and setToReviewOnly are redefined each render but act alike
@@ -257,14 +267,14 @@ export function DataProductsPage() {
       productFindings.findings,
       tagFilter,
       productTags,
-      domainFilter,
+      checkedProductDomains,
     ],
   );
   const detail = useRememberedDetail(
     "products",
     detailListOf(
       t,
-      products.data,
+      products.data === null ? null : dataProducts,
       (p) => p.id,
       (p) => p.name,
       productNarrowings,
@@ -281,7 +291,7 @@ export function DataProductsPage() {
     search,
     toReviewOnly,
     tags: tagFilter,
-    domains: domainFilter,
+    domains: [...checkedProductDomains],
     creating,
     editing: editingId,
   });
@@ -658,25 +668,23 @@ export function DataProductsPage() {
           onChange={updateSearch}
           placeholder={t("dataProductsTab.filterPlaceholder")}
         />
-        <div className="page-actions">
+        <PageActions>
           {/* Hidden while its form is open: the form ends with Save and Cancel. */}
           {canEdit && !creating && (
-            <Button
-              leftSection={<Plus size={13} />}
-              onClick={openCreate}
-              data-testid="data-products-new-button"
-            >
-              {t("dataProductsTab.newDataProduct")}
-            </Button>
+            <PageCommand description={t("pageCommands.addDataProduct")} docs="data-products/">
+              <Button
+                leftSection={<Plus size={13} />}
+                onClick={openCreate}
+                data-testid="data-products-new-button"
+              >
+                {t("dataProductsTab.newDataProduct")}
+              </Button>
+            </PageCommand>
           )}
-          <ProductMapButton />
-          <HelpBubble
-            title={t("dataProductsTab.purposeTitle")}
-            paragraphs={[t("dataProductsTab.purposeBody")]}
-            ariaLabel={t("dataProductsTab.purposeAria")}
-            testId="data-products-purpose-help"
-          />
-        </div>
+          <PageCommand description={t("pageCommands.productMap")} docs="data-products/">
+            <ProductMapButton />
+          </PageCommand>
+        </PageActions>
       </div>
       {/* The list's facets, under the header's filter. */}
       <Group gap="sm" mb="sm" wrap="wrap">
@@ -687,15 +695,6 @@ export function DataProductsPage() {
             onChange={setTagFilter}
             ariaLabel={t("dataProductsTab.tagFacetLabel")}
             placeholder={t("dataProductsTab.tagFacetPlaceholder")}
-          />
-        </div>
-        <div data-testid="data-products-domain-facet" style={{ minWidth: 180, maxWidth: 360 }}>
-          <MultiSelect
-            options={productDomainOptions}
-            value={domainFilter}
-            onChange={setDomainFilter}
-            ariaLabel={t("dataProductsTab.domainFacetLabel")}
-            placeholder={t("dataProductsTab.domainFacetPlaceholder")}
           />
         </div>
         <Checkbox
@@ -804,9 +803,19 @@ export function DataProductsPage() {
                             }}
                           >
                             <Table.Td>
-                              <Text size="sm" fw={600} ff="monospace" truncate="end">
-                                {p.id}
-                              </Text>
+                              {/* REQ-1659 (amended 2026-11-28): its tags, edited here as on
+                                  the other list pages. */}
+                              <Group gap={4} wrap="wrap">
+                                <Text size="sm" fw={600} ff="monospace" truncate="end">
+                                  {p.id}
+                                </Text>
+                                <TagControl
+                                  objectType="product"
+                                  productId={p.id}
+                                  readOnly={!mayEdit(p)}
+                                  onChanged={() => setCoreVersion((v) => v + 1)}
+                                />
+                              </Group>
                             </Table.Td>
                             <Table.Td>
                               <Text size="xs" truncate="end">

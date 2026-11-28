@@ -156,7 +156,7 @@ const SURFACES: [string, string][] = [
 const COUNTS: Record<string, { to: string; state: Record<string, unknown> }> = {
   cypher: {
     to: "/graph",
-    state: { query: "MATCH (n:Clients) RETURN count(n) AS count", autoRun: true },
+    state: { query: "MATCH (n:Clients) RETURN count(n) AS count" },
   },
   sql: { to: "/sql", state: { sql: 'select count(*) from "sales"."clients"', autoRun: true } },
   sparql: {
@@ -165,7 +165,6 @@ const COUNTS: Record<string, { to: string; state: Record<string, unknown> }> = {
       query:
         "PREFIX sales: <https://provisa.example/sales/>\n" +
         "SELECT (COUNT(?s) AS ?count) WHERE {\n  ?s a sales:clients .\n}",
-      autoRun: true,
     },
   },
   graphql: {
@@ -193,7 +192,7 @@ const COUNTS: Record<string, { to: string; state: Record<string, unknown> }> = {
 const GROUPED: Record<string, { to: string; state: Record<string, unknown> }> = {
   cypher: {
     to: "/graph",
-    state: { query: "MATCH (n:Clients) RETURN n.name AS name, count(n) AS count", autoRun: true },
+    state: { query: "MATCH (n:Clients) RETURN n.name AS name, count(n) AS count" },
   },
   sql: {
     to: "/sql",
@@ -209,7 +208,6 @@ const GROUPED: Record<string, { to: string; state: Record<string, unknown> }> = 
         "PREFIX sales: <https://provisa.example/sales/>\n" +
         "SELECT ?v (COUNT(?s) AS ?count) WHERE {\n" +
         "  ?s a sales:clients . ?s sales:clients_name ?v .\n}\nGROUP BY ?v",
-      autoRun: true,
     },
   },
   graphql: {

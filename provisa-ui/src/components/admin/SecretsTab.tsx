@@ -60,6 +60,8 @@ import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { useRequiredFields } from "../form/useRequiredFields";
 import { FilterInput } from "./FilterInput";
+import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 /**
  * REQ-1557, REQ-1558: the org's secrets — NAMES GO IN, VALUES NEVER COME BACK OUT.
@@ -352,18 +354,20 @@ function SecretsVault({ vault, title, header }: VaultProps) {
         placeholder={t("secretsTab.filterPlaceholder")}
         testId="secrets-filter"
       />
-      <div className="page-actions">
+      <PageActions>
         {state !== null && state.provider.writable && (
-          <Button
-            variant={form === "create" ? "outline" : "filled"}
-            data-testid="secrets-add"
-            aria-label={form === "create" ? t("secretsTab.closeForm") : undefined}
-            onClick={() => (form === "create" ? closeForm() : openForm(null))}
-          >
-            {form === "create" ? <X size={14} /> : t("secretsTab.add")}
-          </Button>
+          <PageCommand description={t("pageCommands.addSecret")} docs="secrets/#reference-syntax">
+            <Button
+              variant={form === "create" ? "outline" : "filled"}
+              data-testid="secrets-add"
+              aria-label={form === "create" ? t("secretsTab.closeForm") : undefined}
+              onClick={() => (form === "create" ? closeForm() : openForm(null))}
+            >
+              {form === "create" ? <X size={14} /> : t("secretsTab.add")}
+            </Button>
+          </PageCommand>
         )}
-      </div>
+      </PageActions>
     </div>
   );
   if (error && !state)

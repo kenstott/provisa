@@ -11,6 +11,8 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
+Hints: 1, listed under each source on [its page](postgres.md#hints).
+
 ## [DuckDB](duckdb.md)
 
 270 of the grid's 629 features are native on DuckDB and left out.
@@ -1028,6 +1030,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.
 
 ## [Trino](trino.md)
 
@@ -2170,6 +2174,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on trino</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
+No hint is known.
+
 ## [Presto](presto.md)
 
 173 of the grid's 629 features are native on Presto and left out.
@@ -3311,6 +3317,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: encode($a, $f). <code>0A000</code> encode() has no form on presto</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
+No hint is known.
+
 ## [Athena](athena.md)
 
 173 of the grid's 629 features are native on Athena and left out.
@@ -4451,6 +4459,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on athena</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.
 
 ## [ClickHouse](clickhouse.md)
 
@@ -5685,6 +5695,8 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 <tr><td><strong>carried_from_duckdb</strong><br>Overloads ClickHouse answers in the form DuckDB answers them with, each compared with PostgreSQL&#x27;s answer on its edge values: dexp(double precision), dlog1(double precision), text(xml), int8inc_any(bigint, &quot;any&quot;), int8dec_any(bigint, &quot;any&quot;), max(money), min(money), tideq(tid, tid), tidge(tid, tid), tidgt(tid, tid), tidlarger(tid, tid), tidle(tid, tid), tidlt(tid, tid), tidne(tid, tid), tidsmaller(tid, tid).<br><em>Made on: clickhouse, clickhouse-server. Verified on: clickhouse, clickhouse-server, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>function provisa.transpiler.polyfill.ported._carried_by_the_grid: ``carried`` as the grid&#x27;s ClickHouse form, which reads a call apart from its statement.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
+No hint is known.
+
 ## [Snowflake](snowflake.md)
 
 275 of the grid's 629 features are native on Snowflake and left out.
@@ -6705,6 +6717,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on snowflake</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.
 
 ## [Databricks](databricks.md)
 
@@ -7727,6 +7741,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
+No hint is known.
+
 ## [BigQuery](bigquery.md)
 
 275 of the grid's 629 features are native on BigQuery and left out.
@@ -8747,6 +8763,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on bigquery</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
@@ -9769,6 +9787,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
+No hint is known.
+
 ## [Redshift](redshift.md)
 
 275 of the grid's 629 features are native on Redshift and left out.
@@ -10789,6 +10809,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on redshift</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.
 
 ## [MySQL](mysql.md)
 
@@ -11811,6 +11833,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
+No hint is known.
+
 ## [SingleStore](singlestore.md)
 
 275 of the grid's 629 features are native on SingleStore and left out.
@@ -12831,6 +12855,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on singlestore</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.
 
 ## [SQLite](sqlite.md)
 
@@ -13853,6 +13879,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on sqlite</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
+No hint is known.
+
 ## [Oracle](oracle.md)
 
 275 of the grid's 629 features are native on Oracle and left out.
@@ -14873,6 +14901,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on oracle</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.
 
 ## [Hive](hive.md)
 
@@ -15895,6 +15925,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on hive</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
+No hint is known.
+
 ## [Exasol](exasol.md)
 
 275 of the grid's 629 features are native on Exasol and left out.
@@ -16916,6 +16948,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on exasol</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
+No hint is known.
+
 ## [Druid](druid.md)
 
 275 of the grid's 629 features are native on Druid and left out.
@@ -17936,6 +17970,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on druid</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.
 
 ## [Db2](db2.md)
 
@@ -19017,6 +19053,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>text&#x27;s bound</strong><br>text and an unbounded varchar.<br><em>Made on: db2. Verified on: db2, last by run 45453337906 at c82a9c938c.</em></td><td></td><td><ul><li>A cast to text, and an unbounded varchar, is VARCHAR(8168 CODEUNITS32), Db2&#x27;s longest: a longer value raises.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>string comparison</strong><br>a = b, a &lt; b of strings.<br><em>Made on: db2. Verified on: db2, last by run 45453337906 at c82a9c938c.</em></td><td></td><td><ul><li>String equality ignores trailing blanks: &#x27;a&#x27; = &#x27;a &#x27; is true.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.
 
 ## [SAP HANA](saphana.md)
 
@@ -20111,3 +20149,5 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp precision</strong><br>A timestamp&#x27;s fractional seconds.<br><em>Made on: saphana. Verified on: saphana, last by run 45453337906 at c82a9c938c.</em></td><td></td><td><ul><li>Timestamps keep 7 fractional digits where PostgreSQL keeps 6 (unverified until a live HANA run).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>length outside the BMP</strong><br>length(a) of characters outside the Basic Multilingual Plane.<br><em>Made on: saphana. Verified on: saphana, last by run 45453337906 at c82a9c938c.</em></td><td></td><td><ul><li>LENGTH may count a character outside the BMP differently from PostgreSQL (unverified until a live HANA run).</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+No hint is known.

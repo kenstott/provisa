@@ -932,10 +932,13 @@ _CLIENT_TOOLS: list[Any] = [
             "already prepared a "
             "query for one of these, pass it via `state` instead of telling the user the text and "
             "asking them to paste it — each of these seven reads its own state key (see the "
-            "`state` field below) the SAME way an in-app hyperlink to it already does, and runs "
-            "it immediately when state.autoRun is true, landing it in the editor with no "
-            "copy-paste needed. See the system prompt's section on the query surfaces for which "
-            "tool to call first to get each surface's real field/name identifiers before "
+            "`state` field below) the SAME way an in-app hyperlink to it already does, landing it "
+            "in the editor with no copy-paste needed. /graph and /sparql run what they are handed "
+            "as soon as they open, with no autoRun, unless state.hold holds it unrun for the user "
+            'to press Run: "write" for a statement that writes (a CALL of a command that writes), '
+            '"parameters" for one that still carries placeholders the user must fill. The other '
+            "surfaces run it immediately when state.autoRun is true. See the system prompt's "
+            "section on the query surfaces for which tool to call first to get each surface's real field/name identifiers before "
             "building the query. Explore's Python tab (/python) and Notebook tab (/notebook) run "
             "Python in the user's browser as the user, reading Provisa through provisa_client "
             "(provisa_client.query(sql_or_graphql_or_cypher) returns a pandas DataFrame; pandas, "
@@ -992,8 +995,11 @@ _CLIENT_TOOLS: list[Any] = [
                         '/python -> {"code": "<Python script>"} (the Python tab; add "newTab": true and '
                         'optionally "title" to write it into a new script tab), '
                         '/notebook -> {"cells": ["<cell>", ...]} (the Notebook tab); the run\'s '
-                        "output comes back in the tool result. Always also set "
-                        '"autoRun": true alongside whichever key applies.'
+                        "output comes back in the tool result. On every route but /graph and "
+                        '/sparql, also set "autoRun": true alongside whichever key applies. '
+                        "/graph and /sparql take no autoRun: they run what they are handed unless "
+                        '"hold" is set, "write" for a statement that writes or "parameters" for '
+                        "one with placeholders the user must fill, which opens it unrun."
                     ),
                 },
                 # REQ-2115: steps taken on the screen the route opens, in order, each shown.
@@ -1617,8 +1623,12 @@ _SYSTEM = (
     "-- use the one the user names, the Python tab only when they name neither, never call the "
     "Python tab a notebook, and start the code with `import provisa_client` and "
     "`provisa_client.sign_in()`; the run's output, value and error come back in the navigate "
-    "result. Always pass state.autoRun=true alongside so the query runs immediately instead of "
-    "sitting unrun in the editor.\n"
+    "result. Cypher /graph and SPARQL /sparql run a handed query as soon as they open, with no "
+    'autoRun; set state.hold to open it unrun instead, waiting for Run: state.hold="write" for a '
+    'statement that writes (a CALL of a command that writes), state.hold="parameters" for one '
+    "that still carries placeholders the user must fill. On every other surface pass "
+    "state.autoRun=true alongside so the query runs immediately instead of sitting unrun in the "
+    "editor.\n"
     "A navigate with state reads the screen back before it answers, and its result is what the "
     "page shows. Say a page was opened with a query, a body or a selection only when that result "
     "succeeded and shows it; a failed result says what the page did not take, so tell the user "

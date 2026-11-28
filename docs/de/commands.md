@@ -32,12 +32,14 @@ Jedes Argument deklariert eine `arg_kind`:
 | `arg_kind` | Verhalten |
 | --- | --- |
 | `column_value` | Skalar; direkt im Request-Payload übergeben |
-| `table_ref` | Lazy; Provisa übergibt die Relationsreferenz unverändert; der Dienst ruft die Daten ab |
-| `result_set` | Eager; Provisa materialisiert die referenzierte Relation und sendet ihre Zeilen |
+| `table_ref` | Lazy; Provisa übergibt den Namen der Tabelle; der Dienst ruft die Daten ab |
+| `result_set` | Eager; Provisa liest die Relation und sendet ihre Zeilen |
 
 `http`- und `grpc`-Commands **müssen** mindestens ein `table_ref`- oder `result_set`-Argument deklarieren.
 Ein externer Command, der nur skalare Argumente erhält, würde einmal pro Zeile aufgerufen, was Batching zunichtemacht.
 Der Dispatcher weist diese Konfiguration zum Aufrufzeitpunkt zurück (422).
+
+Ein als Tabelle übergebenes Relationsargument benennt sie mit ihrem logischen Namen, dem `schema.table`, unter dem eine SQL-Anweisung sie liest (zum Beispiel `pet_store.orders`). Eine `result_set`-Tabelle wird über die gesteuerte Pipeline als die aufrufende Rolle gelesen, sodass deren Zeilenfilter, Masken und Spaltensichtbarkeit gelten, und es werden nur die deklarierten Spalten des Arguments gelesen. Eine physische Referenz `source.schema.table` oder ein Name, unter dem SQL keine Tabelle bereitstellt, wird mit HTTP 400 abgewiesen, wobei die erwartete Form genannt wird. Ein `result_set` kann auch als Abfrage, die genauso ausgeführt wird, oder als JSON-Array von Zeilen übergeben werden.
 
 Ein Command, der eine Menge zurückgibt (deklariert über `output_columns` und `return_schema`), ist eine
 tabellenwertige Funktion. Verwenden Sie ihn in einer `FROM`-Klausel oder einem `JOIN`. [abgeleitet aus models.py:744-748
@@ -57,7 +59,7 @@ Beide Verträge werden bei jedem Aufruf laut fehlschlagend validiert:
 - **Ausgabe:** Vom Command zurückgegebene Zeilen werden gegen `output_columns` validiert, bevor sie
   den Aufrufer erreichen.
 - **Enge Projektion:** Wenn ein Eingabevertrag deklariert ist, projiziert die Materialisierungsabfrage
-  **nur diese Spalten** (`SELECT "id", "region" FROM ...`) statt `SELECT *`.
+  **nur diese Spalten** (`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`) statt `SELECT *`.
 
 ### Das IR-Typvokabular {: #the-ir-type-vocabulary }
 
@@ -146,8 +148,8 @@ Befehle können **innerhalb** einer größeren SQL-Anweisung stehen, wo Sie sie 
 ```sql
 -- Enrich the orders relation and join the result back inline.
 SELECT o.id, o.amount, e.score, e.region_label
-FROM   orders o
-JOIN   enrich_orders('main.public.orders') e ON o.id = e.id
+FROM   pet_store.orders o
+JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
 WHERE  e.score > 0.8;
 ```
 

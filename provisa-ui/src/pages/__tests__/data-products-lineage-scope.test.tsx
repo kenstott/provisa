@@ -26,7 +26,10 @@ import type { LanesOptions } from "../../components/provisa-graph/lanes";
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
+    // REQ-1659: product read in every domain, so every product is listed whatever its status.
+    selectedRoles: [
+      { id: "admin", effectiveCapabilities: ["data_product_read"], domain_access: ["*"] },
+    ],
     availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));

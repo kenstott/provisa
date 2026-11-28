@@ -14,9 +14,18 @@
 
 import { dataGraphql, metaReader, rootQuery } from "../../api/metaGraph";
 
-/** The Cypher label the ontology's terms are served under, as ``role`` reads them: the server's
- * own (/data/graph-schema, by the terms table's registration), never derived here. */
-export async function termsCypherLabel(role: string): Promise<string> {
+/** The ontology's terms as ``role``'s Cypher graph serves them: their label, and the relationship
+ * types a term link is served under (each a type of the term edges junction, term to term) -- the
+ * server's own (/data/graph-schema, by the terms table's registration), never derived here. */
+export interface TermsGraph {
+  label: string;
+  links: string[];
+}
+
+/** The junction a term link is a row of (ontology._term_edges, as ontologyData reads it). */
+const TERM_EDGES = "_term_edges";
+
+export async function termsCypherGraph(role: string): Promise<TermsGraph> {
   const m = await metaReader(role);
   const q = rootQuery(
     m,
@@ -32,17 +41,86 @@ export async function termsCypherLabel(role: string): Promise<string> {
     throw new Error(`the ontology's terms table is registered ${tables.length} times, not once`);
   const resp = await fetch("/data/graph-schema", { headers: { "X-Provisa-Role": role } });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
-  const body = (await resp.json()) as { node_labels: { label: string; table_id: number }[] };
+  const body = (await resp.json()) as {
+    node_labels: { label: string; table_id: number }[];
+    relationship_types: {
+      type: string;
+      source: string;
+      target: string;
+      junction_table_name: string | null;
+    }[];
+  };
   const found = body.node_labels.find((n) => n.table_id === tables[0].id);
-  if (found === undefined) throw new Error("the ontology's terms have no Cypher label for the role");
-  return found.label;
+  if (found === undefined)
+    throw new Error("the ontology's terms have no Cypher label for the role");
+  const links = body.relationship_types
+    .filter(
+      (r) =>
+        r.source === found.label &&
+        r.target === found.label &&
+        r.junction_table_name === TERM_EDGES,
+    )
+    .map((r) => r.type);
+  return { label: found.label, links: [...new Set(links)].sort() };
 }
 
-/** All hops from ``roots`` (the terms the root read: a focus's, or a search's matches), every
- * relationship any number of steps away, as one Cypher query. */
-export function allHopsCypher(label: string, roots: readonly number[]): string {
-  const ids = [...roots].sort((a, b) => a - b);
-  return ids.length === 1
-    ? `MATCH p = (t:${label} {id: ${ids[0]}})-[*]-(n) RETURN p`
-    : `MATCH p = (t:${label})-[*]-(n) WHERE t.id IN [${ids.join(", ")}] RETURN p`;
+/** The view's terms read as one Cypher query: from ``roots`` (the terms the view's root reads -- a
+ * search's matches, a focus's terms, or with neither every term its filters keep), each walked
+ * ``depth`` steps over the term links (a fixed Hops value, or All's: as far as the view's walk went
+ * to reach the end of the connected part), the terms reached each once and the links leaving them.
+ * ``edgeTypes``: the link types the view keeps (every link type, when none). Typed, its ends
+ * labelled and bounded as the view is, it runs as it is opened, never every path through the whole
+ * graph (REQ-2174, amended 2026-11-26). With no root, it answers no term, as the view draws none. */
+export function allHopsCypher(
+  graph: TermsGraph,
+  roots: readonly number[],
+  depth: number,
+  edgeTypes: readonly string[],
+): string {
+  if (!Number.isInteger(depth) || depth < 0)
+    throw new Error(`a walk is a whole number of hops, not ${depth}`);
+  const ids = [...new Set(roots)].sort((a, b) => a - b);
+  const { label } = graph;
+  const types = keptLinks(graph, edgeTypes);
+  const one = ids.length === 1;
+  const among = `[${ids.join(", ")}]`;
+  // No link the view keeps: the roots alone, as the view drew them.
+  if (types === null || ids.length === 0)
+    return one
+      ? `MATCH (a:${label} {id: ${ids[0]}}) RETURN a`
+      : `MATCH (a:${label}) WHERE a.id IN ${among} RETURN a`;
+  const links = `OPTIONAL MATCH (a)-[r:${types}]->(b:${label}) RETURN DISTINCT a, r, b`;
+  if (depth === 0)
+    return one
+      ? `MATCH (a:${label} {id: ${ids[0]}}) ${links}`
+      : `MATCH (a:${label}) WHERE a.id IN ${among} ${links}`;
+  const start = one ? `(t:${label} {id: ${ids[0]}})` : `(t:${label})`;
+  const where = one ? "" : ` WHERE t.id IN ${among}`;
+  return `MATCH ${start}-[:${types}*0..${depth}]-(a:${label})${where} ${links}`;
+}
+
+/** The terms a view draws, ``terms``, as one Cypher query: each term once and the links between
+ * them of the types the view keeps. What a focus draws within the view's read -- a neighbourhood
+ * no reach filter states -- is still these terms and links (REQ-2136). */
+export function drawnCypher(
+  graph: TermsGraph,
+  terms: readonly number[],
+  edgeTypes: readonly string[],
+): string {
+  const ids = [...new Set(terms)].sort((a, b) => a - b);
+  const { label } = graph;
+  const among = `[${ids.join(", ")}]`;
+  const types = keptLinks(graph, edgeTypes);
+  if (types === null || ids.length === 0)
+    return `MATCH (a:${label}) WHERE a.id IN ${among} RETURN a`;
+  return (
+    `MATCH (a:${label}) WHERE a.id IN ${among} ` +
+    `OPTIONAL MATCH (a)-[r:${types}]->(b:${label}) WHERE b.id IN ${among} RETURN a, r, b`
+  );
+}
+
+/** The term link types the view keeps, as a Cypher type alternation; null when it keeps none. */
+function keptLinks(graph: TermsGraph, edgeTypes: readonly string[]): string | null {
+  const types = graph.links.filter((t) => edgeTypes.length === 0 || edgeTypes.includes(t));
+  return types.length === 0 ? null : types.join("|");
 }

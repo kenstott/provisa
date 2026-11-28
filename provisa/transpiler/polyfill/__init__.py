@@ -28,6 +28,7 @@ from provisa.transpiler.polyfill.grid import (
     Connector,
     Feature,
     Grid,
+    Hint,
     Limitation,
     Rule,
     Side,
@@ -35,14 +36,24 @@ from provisa.transpiler.polyfill.grid import (
     column_of,
     written_in,
 )
-from provisa.transpiler.polyfill import measured
+from provisa.transpiler.polyfill import hints, measured
 from provisa.transpiler.polyfill.matching import Bindings, graft, match
 from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, hole_name, holes
 
 #: The package's modules that hold no family: the grid, its notation and matching, the pages and
 #: the rows' provenance they print, and the Trino helpers families share.
 _NOT_FAMILIES = frozenset(
-    {"docs", "grid", "inet_literal", "matching", "measured", "notation", "provenance", "trino"}
+    {
+        "docs",
+        "grid",
+        "hints",
+        "inet_literal",
+        "matching",
+        "measured",
+        "notation",
+        "provenance",
+        "trino",
+    }
 )
 
 
@@ -67,7 +78,7 @@ def _features() -> tuple[Feature, ...]:
 #: The one grid: every family's features, each family from its own module (its FEATURES, at its
 #: ORDER), so a family is edited in its module alone and a new family needs no edit here.
 #: The grid: each family's rows, with the old table's refusals stated where a row keeps its form.
-GRID = Grid(measured.stated(_features()))
+GRID = Grid(measured.stated(_features()), hints.HINTS)
 
 __all__ = [
     "DIALECTS",
@@ -77,6 +88,7 @@ __all__ = [
     "Connector",
     "Feature",
     "Grid",
+    "Hint",
     "Limitation",
     "Refusal",
     "Rewrite",

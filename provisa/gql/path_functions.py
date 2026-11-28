@@ -31,9 +31,10 @@ from provisa.gql.label_map import (
     NodeMapping,
     RelationshipMapping,
 )
-from provisa.gql.expr_ast import Variable
+from provisa.gql.expr_ast import Binary, CypherExpr, ListLiteral, Paren, Property, Variable
+from provisa.gql.expr_ast import Literal as CypherLiteral
 from provisa.gql.expr_ast import walk as expr_nodes
-from provisa.gql.ir import MatchClause, NodePattern, PathFunction, RelPattern
+from provisa.gql.ir import MatchClause, NodePattern, PathFunction, RelPattern, WhereClause
 from provisa.gql.path_walk import UNLABELLED_ENDS, _json_list
 from provisa.gql.translator_helpers import _make_junction_joins  # REQ-1586
 
@@ -91,6 +92,46 @@ def _register_path_vars(
         var_table[src_var] = (src_var, src_nm)
     if tgt_var and tgt_var not in var_table:
         var_table[tgt_var] = (tgt_var, tgt_nm)
+
+
+#: The operators a condition on a walk's start may use to narrow the rows it starts from.
+_SEED_OPS = frozenset({"=", "<>", "<", "<=", ">", ">=", "IN", "AND", "OR"})
+
+
+def _conjuncts(expr: CypherExpr) -> list[CypherExpr]:
+    """``expr``'s top-level AND operands, through parentheses."""
+    if isinstance(expr, Paren):
+        return _conjuncts(expr.inner)
+    if isinstance(expr, Binary) and expr.op.upper() == "AND":
+        return [*_conjuncts(expr.left), *_conjuncts(expr.right)]
+    return [expr]
+
+
+def _on_start_alone(expr: CypherExpr, start: str) -> bool:
+    """Whether ``expr`` compares ``start``'s properties with literals and reads nothing else."""
+    if isinstance(expr, Paren):
+        return _on_start_alone(expr.inner, start)
+    if isinstance(expr, Binary):
+        return (
+            expr.op.upper() in _SEED_OPS
+            and _on_start_alone(expr.left, start)
+            and _on_start_alone(expr.right, start)
+        )
+    if isinstance(expr, Property):
+        return isinstance(expr.obj, Variable) and expr.obj.name == start
+    if isinstance(expr, ListLiteral):
+        return all(isinstance(i, CypherLiteral) for i in expr.items)
+    return isinstance(expr, CypherLiteral)
+
+
+def _reads_alias_alone(sql: exp.Expression, alias: str) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether ``sql`` reads columns of ``alias`` and of nothing else, and no subquery."""
+    columns = list(sql.find_all(exp.Column))
+    return (
+        bool(columns)
+        and all(c.table == alias for c in columns)
+        and sql.find(exp.Subquery, exp.Select) is None
+    )
 
 
 def _extract_rel_attrs(
@@ -568,6 +609,33 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             every_hop,
             against_walk=against_walk,
         )
+
+    def _seed_filter(self, start: str | None) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The required WHERE's conditions on ``start`` alone (a walk's start), over ``_seed``: each
+        top-level conjunct comparing ``start``'s properties with literals (``(t {id: 112})``,
+        ``WHERE t.id IN [1, 2]``), lowered as the statement's WHERE lowers it. The statement keeps
+        no row whose start fails one, so a walk from such a row is never read: the walk starts only
+        from the rows kept, not from every row of the start's table. None when there is none."""
+        where: WhereClause | None = self._stage_where  # type: ignore[attr-defined]
+        if start is None or where is None:
+            return None
+        kept = [
+            lowered
+            for conjunct in _conjuncts(where.expression)
+            if _on_start_alone(conjunct, start)
+            for lowered in [self._lower_expr(conjunct)]  # type: ignore[attr-defined]
+            if _reads_alias_alone(lowered, start)
+        ]
+        if not kept:
+            return None
+        on_seed = exp.and_(*kept).transform(
+            lambda node: (
+                exp.Column(this=node.this.copy(), table=exp.Identifier(this="_seed"))
+                if isinstance(node, exp.Column)
+                else node
+            )
+        )
+        return on_seed
 
     def _every_hop_values(self, rel: RelPattern | None, error: type) -> dict[str, Any]:
         """Each key of ``rel``'s inline property map (``-[:T* {k: v}]->``, RelPattern.every_hop)
@@ -1155,6 +1223,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             backward=backward,
             trail=trail,
             against_stored=backward if against_stored is None else against_stored,
+            seed_filter=self._seed_filter(src_var),
         )
         self._recursive_ctes.append((cte_name, cte_expr))
 
@@ -1403,8 +1472,12 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         backward: frozenset[int] = frozenset(),
         trail: Trail | None = None,
         against_stored: frozenset[int] = frozenset(),
+        seed_filter: exp.Expression | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build the UNION ALL body of the recursive CTE.
+
+        ``seed_filter`` (_seed_filter): the statement's conditions on the walk's start alone, over
+        ``_seed``, so the walk starts only from the rows the statement keeps.
 
         Base case: one branch per allowed rel whose source_label == src_nm.label.
         Recursive step: one branch per allowed rel expanding from any current node type.
@@ -1427,6 +1500,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
 
         def seed_trail(select: exp.Select) -> exp.Select:
             # A walk of no hops: its one node, and no relationship.
+            if seed_filter is not None:
+                select = select.where(seed_filter.copy())
             if trail is None:
                 return select
             from provisa.gql.select_builder import node_json
@@ -1504,6 +1579,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                     exp.alias_(_json_list([edge_obj]), alias="rels", quoted=True),
                 )
             branch = _apply_hop(branch, rel, "_seed", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
+            if seed_filter is not None:
+                branch = branch.where(seed_filter.copy())
             base_branches.append(branch)
 
         if not base_branches:

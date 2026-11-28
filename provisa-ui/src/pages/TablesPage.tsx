@@ -66,7 +66,6 @@ import { usePutBackRegions, useTableWithdrawal } from "../hooks/useWithdrawal";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
-import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { diffEditedColumns } from "./tables/columnDiff";
@@ -133,6 +132,8 @@ import {
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { assignableDomainIds } from "../lib/internalDomains";
+import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 
 const columnTypes = (cols: { name: string; dataType: string }[]): Record<string, string> =>
   Object.fromEntries(cols.map((c) => [c.name, c.dataType]));
@@ -1220,46 +1221,56 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           hidden={regionHidden}
           error={regionError}
         />
-        <div className="page-actions">
+        <PageActions>
           {!viewsOnly && !hidingOnly && (
-            <Button
-              data-tour="tables-add"
-              data-testid="tables-add-toggle"
-              variant={showForm ? "outline" : "filled"}
-              onClick={() =>
-                leave.guard(() => {
-                  // The form opens with no problem of its own yet.
-                  setError(null);
-                  setShowForm(!showForm);
-                })
-              }
-              aria-label={showForm ? translate("tablesPage.closeForm") : undefined}
+            <PageCommand
+              description={translate("pageCommands.addTable")}
+              docs="configuration/#tables"
             >
-              {showForm ? <X size={14} /> : translate("tablesPage.addTable")}
-            </Button>
+              <Button
+                data-tour="tables-add"
+                data-testid="tables-add-toggle"
+                variant={showForm ? "outline" : "filled"}
+                onClick={() =>
+                  leave.guard(() => {
+                    // The form opens with no problem of its own yet.
+                    setError(null);
+                    setShowForm(!showForm);
+                  })
+                }
+                aria-label={showForm ? translate("tablesPage.closeForm") : undefined}
+              >
+                {showForm ? <X size={14} /> : translate("tablesPage.addTable")}
+              </Button>
+            </PageCommand>
           )}
           {!hidingOnly && !(viewsOnly && showViewForm) && (
-            <Tip text={translate("tablesPage.addViewTitle")}>
+            <PageCommand
+              // REQ-1318: on the Views page, Add View opens the definition-mode form
+              // (SQL | Metrics toggle); elsewhere it keeps routing to the SQL editor.
+              description={translate(
+                viewsOnly ? "pageCommands.addView" : "tablesPage.addViewTitle",
+              )}
+              docs="configuration/#views-governed-computed-datasets"
+            >
               <Button
                 // On the Views page "+ View" is the page's own add, so the filled primary as
                 // "+ Table" is on the Tables page; beside "+ Table" it is a secondary.
                 variant={viewsOnly ? "filled" : "default"}
                 data-testid="views-add-toggle"
-                // REQ-1318: on the Views page, Add View opens the definition-mode form
-                // (SQL | Metrics toggle); elsewhere it keeps routing to the SQL editor.
                 onClick={() =>
                   leave.guard(() => (viewsOnly ? setShowViewForm(true) : navigate("/sql")))
                 }
               >
                 {translate("tablesPage.addView")}
               </Button>
-            </Tip>
+            </PageCommand>
           )}
           {!viewsOnly && !hidingOnly && (
             // REQ-2199: a split button. + Model opens the entity/fact form; its drop down picks
             // the method: Entity/Fact, or the Star Schema or Data Vault wizard.
-            <Button.Group>
-              <Tip text={translate("tablesPage.modelTitle")}>
+            <PageCommand description={translate("tablesPage.modelTitle")} docs="modeling/">
+              <Button.Group>
                 <Button
                   variant="default"
                   data-testid="tables-model-toggle"
@@ -1267,45 +1278,48 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 >
                   {translate("tablesPage.model")}
                 </Button>
-              </Tip>
-              <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
-                <Menu.Target>
-                  <Button
-                    variant="default"
-                    px={6}
-                    aria-label={translate("tablesPage.modelMenu")}
-                    data-testid="tables-model-menu"
-                  >
-                    <ChevronDown size={14} aria-hidden />
-                  </Button>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Menu.Item
-                    onClick={() => leave.guard(() => setShowModeling("entityFact"))}
-                    data-testid="tables-model-entity-fact"
-                  >
-                    {translate("tablesPage.modelEntityFact")}
-                  </Menu.Item>
-                  <Menu.Item
-                    onClick={() => leave.guard(() => setShowModeling("star"))}
-                    data-testid="tables-model-star"
-                  >
-                    {translate("tablesPage.modelStarSchema")}
-                  </Menu.Item>
-                  <Menu.Item
-                    onClick={() => leave.guard(() => setShowModeling("vault"))}
-                    data-testid="tables-model-vault"
-                  >
-                    {translate("tablesPage.modelDataVault")}
-                  </Menu.Item>
-                </Menu.Dropdown>
-              </Menu>
-            </Button.Group>
+                <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+                  <Menu.Target>
+                    <Button
+                      variant="default"
+                      px={6}
+                      aria-label={translate("tablesPage.modelMenu")}
+                      data-testid="tables-model-menu"
+                    >
+                      <ChevronDown size={14} aria-hidden />
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item
+                      onClick={() => leave.guard(() => setShowModeling("entityFact"))}
+                      data-testid="tables-model-entity-fact"
+                    >
+                      {translate("tablesPage.modelEntityFact")}
+                    </Menu.Item>
+                    <Menu.Item
+                      onClick={() => leave.guard(() => setShowModeling("star"))}
+                      data-testid="tables-model-star"
+                    >
+                      {translate("tablesPage.modelStarSchema")}
+                    </Menu.Item>
+                    <Menu.Item
+                      onClick={() => leave.guard(() => setShowModeling("vault"))}
+                      data-testid="tables-model-vault"
+                    >
+                      {translate("tablesPage.modelDataVault")}
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              </Button.Group>
+            </PageCommand>
           )}
           {!viewsOnly && (
             // An ancillary action, reached rarely: a borderless icon keeps it out of the
             // decision the bordered buttons beside it present.
-            <Tip text={translate("tablesPage.reportXlsxTitle")}>
+            <PageCommand
+              description={translate("tablesPage.reportXlsxTitle")}
+              docs="configuration/#tables"
+            >
               <ActionIcon
                 variant="subtle"
                 size="lg"
@@ -1318,25 +1332,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               >
                 <FileSpreadsheet size={18} />
               </ActionIcon>
-            </Tip>
+            </PageCommand>
           )}
-          <ErdToggle
-            page="tables"
-            title={translate("tablesPage.erdHelpTitle")}
-            body={translate("tablesPage.erdHelpBody")}
-            label={translate("tablesPage.viewErd")}
-          />
-          <HelpBubble
-            title={translate("tablesPage.purposeTitle")}
-            paragraphs={[
-              translate("tablesPage.purposeBody"),
-              translate("tablesPage.purposeAdd"),
-              translate("tablesPage.purposeModel"),
-            ]}
-            ariaLabel={translate("tablesPage.purposeAria")}
-            testId="tables-purpose-help"
-          />
-        </div>
+          <PageCommand
+            description={translate("tablesPage.erdHelpBody")}
+            docs="configuration/#relationships"
+          >
+            <ErdToggle page="tables" label={translate("tablesPage.viewErd")} />
+          </PageCommand>
+        </PageActions>
       </div>
 
       {/* A form open in the panel says its own problem under the panel's head. */}

@@ -311,8 +311,6 @@
     "tagFacetLabel": "תגיות",
     "tagFacetPlaceholder": "סינון לפי תגית",
     "noMatch": "אין מוצרי נתונים התואמים למסננים",
-    "domainFacetLabel": "דומיינים",
-    "domainFacetPlaceholder": "סינון לפי דומיין",
     "colSync": "סנכרון",
     "syncNone": "לא מסונכרן",
     "syncSynced_one": "מסונכרן",

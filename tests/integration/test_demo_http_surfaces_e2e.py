@@ -376,7 +376,15 @@ def test_write_operations_are_offered_and_adding_the_source_registers_only_the_d
     )
     offered = {f["name"] for f in data["availableFunctions"]}
     assert {"placeOrder", "deleteOrder", "addPet"} <= offered, offered
-    assert "getInventory" not in offered  # a GET is a table, not a command
+    # A typed GET with no required parameter is a plain list: a table, not offered (REQ-316).
+    assert not {"findPetsByStatus", "findPetsByTags"} & offered, offered
+    # A GET that requires a parameter is a function returning its table's rows (REQ-1986,
+    # 2026-11-16: "Every operation of a source that requires a parameter is a function").
+    assert {"getPetById", "getOrderById", "getUserByName"} <= offered, offered
+    # getInventory's rows are a map with no properties, so it is an untyped GET: a command that
+    # reads, beside a table whose columns the operator declares (REQ-1924 DECLARED COLUMNS,
+    # REQ-1874; commit 4eaa859c33).
+    assert "getInventory" in offered, offered
     actions = httpx.get(f"{instance.url}/admin/actions", headers=_ADMIN, timeout=_TIMEOUT).json()
     # The install config declares one operation as a command, add_pet (addPet, REQ-2134).
     registered = [

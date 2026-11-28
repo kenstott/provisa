@@ -49,7 +49,15 @@ export function NavBar() {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
+  const {
+    domains: roleDomains,
+    checkedDomains: checkedRoleDomains,
+    toggleDomain: toggleRoleDomain,
+    domainsEnabled,
+    productDomains,
+    checkedProductDomains,
+    toggleProductDomain,
+  } = useDomainFilter();
   const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId } =
     useAuth();
   const {
@@ -185,7 +193,17 @@ export function NavBar() {
     location.pathname === "/openapi" ||
     // REQ-1591: the glossary list is narrowed by the same selection, and its create modal makes a
     // term's domains from it.
-    location.pathname === "/context/ontology";
+    location.pathname === "/context/ontology" ||
+    // REQ-1659 (amended 2026-11-28): the Data Products list, over its own domains (below).
+    location.pathname === "/data-products";
+
+  // REQ-1659 (amended 2026-11-28): on the Data Products page the picker lists the domains of the
+  // products offered, those outside the role included, with their own selection; every other
+  // page lists the domains the active roles reach.
+  const onProductsPage = location.pathname === "/data-products";
+  const domains = onProductsPage ? productDomains : roleDomains;
+  const checkedDomains = onProductsPage ? checkedProductDomains : checkedRoleDomains;
+  const toggleDomain = onProductsPage ? toggleProductDomain : toggleRoleDomain;
 
   function toggleGroup(id: string) {
     // If already in this group's route, just toggle the pin

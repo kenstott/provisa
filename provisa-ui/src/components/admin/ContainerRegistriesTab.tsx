@@ -51,6 +51,8 @@ import { useRememberedDetail } from "../list/useDetailParam";
 import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
+import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 /** An entry as the form holds it. */
 interface Draft {
@@ -315,16 +317,21 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
           placeholder={t("containerRegistries.filterPlaceholder")}
           testId="container-registries-filter"
         />
-        <div className="page-actions">
-          <Button
-            variant={mode === "create" ? "outline" : "filled"}
-            onClick={() => (mode === "create" ? closeForm() : openForm("create", BLANK))}
-            aria-label={mode === "create" ? t("containerRegistries.closeForm") : undefined}
-            data-testid="container-registries-add"
+        <PageActions>
+          <PageCommand
+            description={t("pageCommands.addContainerRegistry")}
+            docs="code-sources/#deployment"
           >
-            {mode === "create" ? <X size={14} /> : t("containerRegistries.add")}
-          </Button>
-        </div>
+            <Button
+              variant={mode === "create" ? "outline" : "filled"}
+              onClick={() => (mode === "create" ? closeForm() : openForm("create", BLANK))}
+              aria-label={mode === "create" ? t("containerRegistries.closeForm") : undefined}
+              data-testid="container-registries-add"
+            >
+              {mode === "create" ? <X size={14} /> : t("containerRegistries.add")}
+            </Button>
+          </PageCommand>
+        </PageActions>
       </div>
       <Stack gap="md" data-testid="container-registries">
         <Text size="sm" c="dimmed">

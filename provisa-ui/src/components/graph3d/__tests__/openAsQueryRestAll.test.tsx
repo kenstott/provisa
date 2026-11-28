@@ -54,7 +54,10 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
 }));
 vi.mock("../ontologyCypher", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ontologyCypher")>()),
-  termsCypherLabel: async () => "Ontology:Terms",
+  termsCypherGraph: async () => ({
+    label: "Ontology:Terms",
+    links: ["KIND_OF", "PART_OF", "RELATED_TO"],
+  }),
 }));
 vi.mock("../../../api/lineage", () => ({
   fetchProductLineage: async () => ({ nodes: [], edges: [] }),
@@ -118,8 +121,13 @@ describe("a product's graph with the rest of the model and a node focused, at Al
     fireEvent.click(cypher);
     expect(nav.went.at(-1)?.to).toBe("/graph");
     const query = (nav.went.at(-1)?.state as { query: string }).query;
-    // From the focus's terms -- the product's own (species, breed) and breed -- every hop away.
-    expect(query).toBe("MATCH p = (t:Ontology:Terms)-[*]-(n) WHERE t.id IN [15, 16] RETURN p");
+    // From the focus's terms -- the product's own (species, breed) and breed -- over the term
+    // links to the end of the connected part: habitat, one step from species.
+    expect(query).toBe(
+      "MATCH (t:Ontology:Terms)-[:KIND_OF|PART_OF|RELATED_TO*0..1]-(a:Ontology:Terms) " +
+        "WHERE t.id IN [15, 16] " +
+        "OPTIONAL MATCH (a)-[r:KIND_OF|PART_OF|RELATED_TO]->(b:Ontology:Terms) RETURN DISTINCT a, r, b",
+    );
   });
 
   it("opens a fixed hop count as the GraphQL that read it, the focus in it", async () => {

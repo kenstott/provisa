@@ -221,7 +221,7 @@ describe("a role that can read the table", () => {
     await waitFor(() => expect(link("sparql")).toBeInTheDocument());
     const sparql = landing("sparql");
     expect(sparql.pathname).toBe("/sparql");
-    expect(sparql.state.autoRun).toBe(true);
+    expect(sparql.state).not.toHaveProperty("autoRun");
     expect(sparql.state.query).toContain("?s a sales:orders");
   });
 

@@ -311,8 +311,6 @@
     "tagFacetLabel": "タグ",
     "tagFacetPlaceholder": "タグで絞り込む",
     "noMatch": "フィルターに一致するデータプロダクトはありません",
-    "domainFacetLabel": "ドメイン",
-    "domainFacetPlaceholder": "ドメインで絞り込む",
     "colSync": "同期",
     "syncNone": "未同期",
     "syncSynced_one": "同期済み",

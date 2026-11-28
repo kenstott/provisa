@@ -71,6 +71,8 @@ describe("All, under the node budget", () => {
     wire.read = srv.read;
     const loaded = await loadOntology("analyst", scope(Infinity));
     expect(loaded).toMatchObject({ over: 12, hops: true });
+    // It still opens as Cypher: the walk as far as it went before it stopped.
+    expect(loaded?.walk?.depth).toBe(12);
     // The count, the root, and a hop a term until the terms read are past the budget: not all 20.
     const hopsRead = srv.sent.filter((s) => s.query.startsWith("query OntologyHop")).length;
     expect(hopsRead).toBe(12);

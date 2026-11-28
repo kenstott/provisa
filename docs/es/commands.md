@@ -32,12 +32,14 @@ Cada argumento declara un `arg_kind`:
 | `arg_kind` | Comportamiento |
 | --- | --- |
 | `column_value` | Escalar; se pasa directamente en la carga de la solicitud |
-| `table_ref` | Perezoso; Provisa pasa la referencia de la relación tal cual; el servicio obtiene los datos |
-| `result_set` | Eager; Provisa materializa la relación referenciada y envía sus filas |
+| `table_ref` | Perezoso; Provisa pasa el nombre de la tabla; el servicio obtiene los datos |
+| `result_set` | Eager; Provisa lee la relación y envía sus filas |
 
 Los comandos `http` y `grpc` **deben** declarar al menos un argumento `table_ref` o `result_set`.
 Un comando externo que solo reciba argumentos escalares se invocaría una vez por fila, lo que
 anula el batching. El dispatcher rechaza esta configuración en el momento de la llamada (422).
+
+Un argumento de relación dado como tabla la nombra por su nombre lógico, el `schema.table` con el que una sentencia SQL la lee (por ejemplo `pet_store.orders`). Una tabla `result_set` se lee a través del pipeline gobernado como el rol que llama, de modo que se aplican los filtros de filas, las máscaras y la visibilidad de columnas de ese rol, y solo se leen las columnas declaradas del argumento. Una referencia física `source.schema.table`, o cualquier nombre con el que SQL no sirve ninguna tabla, se rechaza con HTTP 400 indicando la forma que espera. Un `result_set` también puede darse como una consulta, que se ejecuta de la misma manera, o como un array JSON de filas.
 
 Un comando que devuelve un conjunto (declarado mediante `output_columns` y `return_schema`) es una
 función de valor tabular. Úselo en una cláusula `FROM` o en un `JOIN`.
@@ -57,7 +59,7 @@ Ambos contratos se validan de forma estricta (fail-loud) en cada invocación:
 - **Salida:** las filas devueltas por el comando se validan contra `output_columns` antes de
   llegar al llamador.
 - **Proyección estrecha:** cuando se declara un contrato de entrada, la consulta de materialización
-  proyecta **solo esas columnas** (`SELECT "id", "region" FROM ...`) en lugar de `SELECT *`.
+  proyecta **solo esas columnas** (`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`) en lugar de `SELECT *`.
 
 ### El vocabulario de tipos IR {: #the-ir-type-vocabulary }
 
@@ -147,8 +149,8 @@ Los comandos pueden aparecer **dentro** de una sentencia SQL mayor, donde los un
 ```sql
 -- Enrich the orders relation and join the result back inline.
 SELECT o.id, o.amount, e.score, e.region_label
-FROM   orders o
-JOIN   enrich_orders('main.public.orders') e ON o.id = e.id
+FROM   pet_store.orders o
+JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
 WHERE  e.score > 0.8;
 ```
 

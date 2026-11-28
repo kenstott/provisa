@@ -91,7 +91,7 @@ function serve(): Held[] {
 function Run() {
   const navigate = useNavigate();
   return (
-    <button onClick={() => navigate("/graph", { state: { query: FIRST, autoRun: true } })}>
+    <button onClick={() => navigate("/graph", { state: { query: FIRST } })}>
       run
     </button>
   );

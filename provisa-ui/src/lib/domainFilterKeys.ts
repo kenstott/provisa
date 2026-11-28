@@ -19,3 +19,24 @@
 // indistinguishable from a provisioning failure.
 export const CHECKED_DOMAINS_KEY = "provisa.checkedDomains";
 export const KNOWN_DOMAINS_KEY = "provisa.knownDomains";
+
+/** The keys one domain selection persists under: the domains checked, and the domains known. */
+export interface DomainSelectionKeys {
+  checked: string;
+  known: string;
+}
+
+/** The navbar's selection over the domains the active roles reach (every domain-filtered page). */
+export const ROLE_DOMAIN_KEYS: DomainSelectionKeys = {
+  checked: CHECKED_DOMAINS_KEY,
+  known: KNOWN_DOMAINS_KEY,
+};
+
+// REQ-1659 (amended 2026-11-28): on the Data Products page the navbar lists the domains of the
+// products offered, not the role's. That list is a different set of domains, so it keeps its own
+// selection: restoring either set against the other's domains would drop every domain the other
+// list lacks from the saved checked set.
+export const PRODUCT_DOMAIN_KEYS: DomainSelectionKeys = {
+  checked: "provisa.checkedProductDomains",
+  known: "provisa.knownProductDomains",
+};

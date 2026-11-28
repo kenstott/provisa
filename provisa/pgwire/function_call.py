@@ -22,12 +22,16 @@ from provisa.executor.result import QueryResult
 
 
 def _literal_value(node):
-    """Coerce a sqlglot argument node to a Python value (string/number/bool/null)."""
+    """Coerce a sqlglot argument node to a Python value (string/number/bool/null). A quoted
+    literal is PostgreSQL's type unknown, read by the command as its parameter's declared type
+    (action_exec, argument_literals)."""
     import sqlglot.expressions as exp
+
+    from provisa.api.data.argument_literals import UnknownLiteral
 
     if isinstance(node, exp.Literal):
         if node.is_string:
-            return node.this
+            return UnknownLiteral(node.this)
         text = node.this
         try:
             return int(text)
@@ -115,10 +119,11 @@ async def maybe_invoke_registered_function(sql: str, role_id: str, state):
     from provisa.api.data.action_exec import bind_command_args, invoke_tracked_function
 
     name, values = hit
-    # Admitted and its count checked against the signature here; passed on by position (a0, a1 …),
-    # the form the executor reads a SQL call's literal arguments in (function_dispatch), each
-    # argument left out taking its default there (REQ-2168).
-    bind_command_args(name, values, state, role_id)
-    args = {f"a{i}": v for i, v in enumerate(values)}
+    # Admitted, its count checked against the signature and each argument read as its declared
+    # type here; passed on by position (a0, a1 …), the form the executor reads a SQL call's
+    # literal arguments in (function_dispatch), each argument left out taking its default there
+    # (REQ-2168).
+    bound = list(bind_command_args(name, values, state, role_id).values())
+    args = {f"a{i}": bound[i] for i in range(len(values))}
     rows = await invoke_tracked_function(name, args, state, role_id)
     return rows_to_query_result(rows)

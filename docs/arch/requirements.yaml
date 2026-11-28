@@ -9166,7 +9166,7 @@
   - admin.md
   - api-reference.md
 - id: REQ-259
-  status: in-progress
+  status: complete
   group: 5. Query Languages, Compilation & Operations
   category: Compiler & Schema
   feature: graphql-schema
@@ -34552,7 +34552,8 @@
   - REQ-1027
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: behaviour present, no test'
 - id: REQ-1052
-  status: in-progress
+  status: complete
+  since: 2026-11
   tests:
   - provisa-ui/src/__tests__/DemoEntry.test.tsx
   group: 11. Platform, Infrastructure & Delivery
@@ -37523,7 +37524,7 @@
     rows in/out against the command''s declared input/output dataset schema (fail-loud). Prerequisite: a canonical per-dataset contract: one or more scalar (column_value) args plus one or more TYPED input
     datasets (result_set/table_ref args, each carrying an ordered relational field-list) and exactly one
     TYPED output dataset; canonical field-list is the source of truth (single GraphQL-scalar vocabulary),
-    with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out), not stored truth. (Amended 2026-11-25 by the maintainer. A command''''s output dataset columns carry the same governance properties as a table''''s columns, namely visibility, masking, tags, glossary terms and classification, a description, and the SQL alias consumers query by, so a policy keyed on a tag or a classification reaches them. They carry none of the stored-data settings, so no fake or synthetic data (a command''''s output comes from calling its service, and a test environment calls that environment''''s service), no physical name and no column cache setting. The command page shows them on a Columns tab of their own beside Command and Bindings.) (Amended 2026-11-25 by the maintainer, second. A command output column''''s tags, glossary terms and classification are assigned like a table column''''s, in the same stores under a command-column kind named by the command and the column, and are edited on the Tags and Glossary pages; the Columns tab shows them with a link there. The tag-keyed column rule of REQ-2278 applies to them. The SQL alias is the name consumers see and query the result column by.) (Amended 2026-11-27 by the maintainer, a command''s Test supplies every argument, and its read view has a Query it line. A scalar argument is an input; a relation argument (table_ref or result_set) is given by picking a table the role can read, writing a query, or pasting a few rows (CSV or JSON), capped to a small row count. A missing required argument is refused by name on pressing Test. The read view shows each argument''s kind, and a Query it line, as on tables and relationships, opens the command''s call in each query surface with its arguments filled in.) (Amended 2026-11-27 by the maintainer, supersedes the Test button of the amendment above, a command is run through its Query it line, as tables and relationships are; there is no Test button. Choosing a surface asks for the arguments, a scalar as an input and a relation by picking a table, writing a query or pasting a few rows, a missing required argument refused by name, then opens that Explore tab with the call filled in, run there under the role Explore is set to. A command that writes opens like any statement and runs only when Run is pressed.) (Amended 2026-11-27 by the maintainer. A query or pasted rows apply to result_set arguments; a table_ref argument is a reference its service reads itself, so the argument form offers only a table for it and refuses a query or rows by name.) (Amended 2026-11-27. The JSON:API Explore page calls commands as well as reading tables. Query it offers JSON:API for a command that has a REST name; a read runs as a GET with its arguments as query parameters when opened, and a write is sent as a POST with the arguments in meta only on Run.) (Amended 2026-11-27, maintainer) A result_set argument that declares its columns offers, when given by a table, only the tables the role reads that have every declared column by name with a type that reads as the declared type. When no table fits, the picker says so and names the columns. The argument''s written query and pasted rows are unchanged, and a table_ref argument is unaffected. (Amended 2026-11-27, maintainer) The command form offers Code (entered) as an implementation. It opens the same editor code sources and code resolvers use and keeps the code as entered code (REQ-1993), stored in the model and run sandboxed. The command''s arguments and its input and output columns come from the function''s declaration, not from hand-typed fields. Python (in-process) stays for modules an operator installed on the host.'
+    with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out), not stored truth. (Amended 2026-11-25 by the maintainer. A command''''s output dataset columns carry the same governance properties as a table''''s columns, namely visibility, masking, tags, glossary terms and classification, a description, and the SQL alias consumers query by, so a policy keyed on a tag or a classification reaches them. They carry none of the stored-data settings, so no fake or synthetic data (a command''''s output comes from calling its service, and a test environment calls that environment''''s service), no physical name and no column cache setting. The command page shows them on a Columns tab of their own beside Command and Bindings.) (Amended 2026-11-25 by the maintainer, second. A command output column''''s tags, glossary terms and classification are assigned like a table column''''s, in the same stores under a command-column kind named by the command and the column, and are edited on the Tags and Glossary pages; the Columns tab shows them with a link there. The tag-keyed column rule of REQ-2278 applies to them. The SQL alias is the name consumers see and query the result column by.) (Amended 2026-11-27 by the maintainer, a command''s Test supplies every argument, and its read view has a Query it line. A scalar argument is an input; a relation argument (table_ref or result_set) is given by picking a table the role can read, writing a query, or pasting a few rows (CSV or JSON), capped to a small row count. A missing required argument is refused by name on pressing Test. The read view shows each argument''s kind, and a Query it line, as on tables and relationships, opens the command''s call in each query surface with its arguments filled in.) (Amended 2026-11-27 by the maintainer, supersedes the Test button of the amendment above, a command is run through its Query it line, as tables and relationships are; there is no Test button. Choosing a surface asks for the arguments, a scalar as an input and a relation by picking a table, writing a query or pasting a few rows, a missing required argument refused by name, then opens that Explore tab with the call filled in, run there under the role Explore is set to. A command that writes opens like any statement and runs only when Run is pressed.) (Amended 2026-11-27 by the maintainer. A query or pasted rows apply to result_set arguments; a table_ref argument is a reference its service reads itself, so the argument form offers only a table for it and refuses a query or rows by name.) (Amended 2026-11-27. The JSON:API Explore page calls commands as well as reading tables. Query it offers JSON:API for a command that has a REST name; a read runs as a GET with its arguments as query parameters when opened, and a write is sent as a POST with the arguments in meta only on Run.) (Amended 2026-11-27, maintainer) A result_set argument that declares its columns offers, when given by a table, only the tables the role reads that have every declared column by name with a type that reads as the declared type. When no table fits, the picker says so and names the columns. The argument''s written query and pasted rows are unchanged, and a table_ref argument is unaffected. (Amended 2026-11-27, maintainer) The command form offers Code (entered) as an implementation. It opens the same editor code sources and code resolvers use and keeps the code as entered code (REQ-1993), stored in the model and run sandboxed. The command''s arguments and its input and output columns come from the function''s declaration, not from hand-typed fields. Python (in-process) stays for modules an operator installed on the host. (Amended 2026-11-28, maintainer) A relation argument given as a table names it by its logical, served name (the name the caller queries it by on SQL, for example pet_store.orders), never by a physical source, schema and table. It is read through the governed pipeline as the calling role, with that role''s row filters, masks and column visibility, and only the declared input columns. A physical source.schema.table reference is refused by name. (Amended 2026-11-28, maintainer) Every command returns a dataset, queries and mutations alike; a mutation returns a dataset describing its result (for example the affected rows, their keys and a status or message per row), not nothing. The Commands list and read view show Returns as the shape of that dataset, either the registered table it returns or its own column names and types (including the columns a code source declares), never a bare word dataset and never a dash for a command that returns rows. The return type choice reads Registered table or Own columns. (Amended 2026-11-28) A relation argument read from a table or a query is not cut to the role''s default display limit; it is read whole, held only to the role''s hard row cap, and a read past that cap is refused by name, never silently truncated. (Amended 2026-11-28, maintainer) A query handed to the Cypher or SPARQL explorer (from Open as query, a graph view, chat, a command or table link) runs as soon as it opens, with no flag from the caller. Two exceptions open it unrun, waiting for Run. A command that writes (unchanged), and a query that still carries parameter placeholders the user must fill (REQ-2252).'
   use_case: A steward composes a governed external transform directly in ordinary SQL joined against federated
     tables, on any surface. Because the command declares and validates its input/output dataset columns, column-level lineage can close across the opaque RPC boundary via taint-closure splicing
     at the function node.
@@ -40400,7 +40401,8 @@
 
     '
 - id: REQ-1230
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Clustered Deployment Configuration
   feature: deployment-clustered
@@ -41627,7 +41629,8 @@
     '
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: behaviour present, no test'
 - id: REQ-1259
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Kubernetes Deployment
   feature: deployment-tls
@@ -43352,7 +43355,7 @@
   e2e_reason: Role filtering, error reporting, and X-Provisa-Role header placement on requests are only
     verifiable end-to-end through the full auth stack with real role assignments.
 - id: REQ-1296
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Authentication
   feature: sign-in-and-identity-bootstrap
@@ -43626,7 +43629,7 @@
   - REQ-1296
   - REQ-1297
 - id: REQ-1299
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Authorization
   feature: roles-and-capabilities-platform-admins
@@ -43968,7 +43971,7 @@
     and revocable.
   notes: 'Roadmap audit 2026-10-13: built, but not complete until it has a test: no unit test'
 - id: REQ-1304
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Authorization
   feature: organizations-administration
@@ -44488,7 +44491,7 @@
   - REQ-1271
   - REQ-1300
 - id: REQ-1312
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Authorization
   feature: organizations-administration
@@ -49388,7 +49391,7 @@
     emits null - which makes the emitted YAML an incomplete design the user must finish before it will
     load. An unassigned type fails loudly: view registration returns schema.column_types_unresolved naming
     the columns, and the table repository - the single write path for table_columns - raises rather than
-    persisting the null. There is therefore no unknown data type at run time.'
+    persisting the null. There is therefore no unknown data type at run time. (Amended 2026-11-28) Registration also refuses a column whose type is the type of NULL (null, unknown), as it refuses a missing type; such a column is never stored and so never reaches proto, GraphQL or any other generated contract.'
   use_case: An operator browsing the catalog needs every column to state its type, and the compiler needs
     a type for every column it plans against.
   code:
@@ -60890,7 +60893,7 @@
     a ?product= parameter names, ahead of the row remembered in localStorage, and writes the parameter
     when a row is expanded so the address bar is itself a link to the open product. A loopback base_url
     (the install default, localhost) links to https://cloud.provisa.dev as-is, since a catalog consumer
-    reads the listing elsewhere and this org names no host there.'
+    reads the listing elsewhere and this org names no host there. (Amended 2026-11-28, maintainer) The Data Products page has no domain filter of its own; it uses the navbar Domains filter as the other list pages do. On this page that filter lists the unique domains of the products currently offered in the marketplace (not the domains the role may create tables in), including domains outside the role, since a listing is discovery and offers decide access. A product''s tags are edited from the list, beside its id, as on the other list pages. (Amended 2026-11-28, maintainer, supersedes the marketplace-only domain list of the earlier 2026-11-28 amendment) On the Data Products page the navbar Domains filter and the list follow the active role, as one rule taken as a union. Each domain where the role holds data product read or write contributes that domain and ALL its products, whatever their status (draft, offered, deprecated, retired). Every product offered in the marketplace contributes its domain and that product. A role with both (or a meta role combining roles) sees the union; switching role switches the list. There are no separate per-role lists to configure.'
   use_case: A consumer reading the listing in Snowsight or the Analytics Hub console can reach the product's
     owner, members, lineage and terms in one click instead of searching for it in Provisa.
   code:
@@ -66967,7 +66970,8 @@
   - admin-graphql.md
 - id: REQ-1786
   value: 'Adding a new source immediately discovers its tables, with no separate crawl step needed.'
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Data Discovery
@@ -77103,7 +77107,8 @@
     the table forms rather than a top-level page, which the text allows.'
   superseded_by: REQ-1443
 - id: REQ-453
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 8. Client Access & Protocols
   category: API & Integration
   feature: connector-catalog-remote-schemas
@@ -77480,7 +77485,8 @@
     govern/route/execute pipeline is REQ-1176 and REQ-1214.'
   superseded_by: REQ-1176
 - id: REQ-469
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 3. Source Registration & Data Modeling
   category: Registration & Governance
   feature: engineering-standards-principles
@@ -78512,7 +78518,8 @@
   tests:
   - tests/unit/test_infra_requirements.py
 - id: REQ-509
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane & Deployment
   feature: deployment-compose-helm
@@ -82926,7 +82933,7 @@
     failure is a fix on main. A release candidate is cut from a green nightly and runs the full suites once;
     each fix reruns only its failing tests; failures are triaged into blockers, fixed on the branch, and
     known issues, which ship listed in the release notes. A full set is never rerun in answer to a fix.
-    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded. (Amended 2026-11-22 by the maintainer. A release converges in under one day from cut to publish. The packaging dry run runs every night on main beside integration and e2e, so a packaging defect becomes a fix job on main, not a release blocker. A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e and the packaging dry run are all green. At the cut the release full set and the packaging dry run run in parallel. A red unit, lint or requirements check on main stops the line: the next landing batch takes only the fixes for it.) (Amended 2026-11-22 again by the maintainer: the stop-the-line clause above is superseded by a ratchet. A red unit, lint or requirements check on main does not freeze landing. A branch lands only if it adds no failing test or check compared with main''s current failure set, so main''s failures can only fall. The red run is triaged at once, its failures grouped by root cause, and each group becomes one fix job at the front of the queue.) (Amended 2026-11-24 by the maintainer. The GitHub Actions cache keeps Docker image caches only for main and open release branches; a branch''s image caches are deleted when the branch is deleted, so the pinned Trino plugin jar cache is never evicted to make room for them. A download refused with HTTP 429 is retried with backoff, then fails by name.) (Amended 2026-11-26 by the maintainer, a split batch relands without a rerun. Pulling a branch only removes code, so the rest of the batch keeps the first run''s verdicts and goes to the lander without another Smoke or unit run. The split runs only the failing tests, locally and in parallel, not through CI.) (Amended 2026-11-27 by the maintainer, cadence. One release every 2 days, starting with 513. Every open requirement not yet in a release is prioritized into a release; each release lists its new features by topic, each with its business benefit, in its notes. A release that is not ready on its day is still never forced out.) (Amended 2026-11-27 by the lead after release 513 set #4 found a unit break brought in by two install-host fixes gated only on their own tests. A fix lands on a release branch only after the unit, lint and requirements checks are green on the fix branch; the full integration and e2e suites still run only in the release full set.) (Amended 2026-11-27 by the maintainer. A change on a release branch that is documentation only needs no retest. A script change takes only its own focused unit test before it goes on the release. A fix is proven by its own targeted tests and is not followed by a rerun of whole suites.)'
+    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded. (Amended 2026-11-22 by the maintainer. A release converges in under one day from cut to publish. The packaging dry run runs every night on main beside integration and e2e, so a packaging defect becomes a fix job on main, not a release blocker. A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e and the packaging dry run are all green. At the cut the release full set and the packaging dry run run in parallel. A red unit, lint or requirements check on main stops the line: the next landing batch takes only the fixes for it.) (Amended 2026-11-22 again by the maintainer: the stop-the-line clause above is superseded by a ratchet. A red unit, lint or requirements check on main does not freeze landing. A branch lands only if it adds no failing test or check compared with main''s current failure set, so main''s failures can only fall. The red run is triaged at once, its failures grouped by root cause, and each group becomes one fix job at the front of the queue.) (Amended 2026-11-24 by the maintainer. The GitHub Actions cache keeps Docker image caches only for main and open release branches; a branch''s image caches are deleted when the branch is deleted, so the pinned Trino plugin jar cache is never evicted to make room for them. A download refused with HTTP 429 is retried with backoff, then fails by name.) (Amended 2026-11-26 by the maintainer, a split batch relands without a rerun. Pulling a branch only removes code, so the rest of the batch keeps the first run''s verdicts and goes to the lander without another Smoke or unit run. The split runs only the failing tests, locally and in parallel, not through CI.) (Amended 2026-11-27 by the maintainer, cadence. One release every 2 days, starting with 513. Every open requirement not yet in a release is prioritized into a release; each release lists its new features by topic, each with its business benefit, in its notes. A release that is not ready on its day is still never forced out.) (Amended 2026-11-27 by the lead after release 513 set #4 found a unit break brought in by two install-host fixes gated only on their own tests. A fix lands on a release branch only after the unit, lint and requirements checks are green on the fix branch; the full integration and e2e suites still run only in the release full set.) (Amended 2026-11-27 by the maintainer. A change on a release branch that is documentation only needs no retest. A script change takes only its own focused unit test before it goes on the release. A fix is proven by its own targeted tests and is not followed by a rerun of whole suites.) (Amended 2026-11-28, maintainer) cloud-dev (cloud.provisa.dev) is deployed by installing a release''s own artifacts (its images and installer, as customers receive them) for a tag, not by pushing source into a running node. Deploying a release is installing that tag. The same deploy runs in CI after each release publish and nightly from main against a throwaway node, so a deploy that breaks fails a run. The source hot-patch stays only for quick UI or config pushes between releases.'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -89212,7 +89219,7 @@ Then customer_360's ODPS document and an ODCS 3.1 contract for each member table
   - REQ-1389
   notes: "Maintainer 2026-10-20, through the lead: add the internal-marketplace targets other than Snowflake (which is fine as is), scoped to an enterprise publishing internally to other data teams. Maintainer: this is data team A in enterprise 1 publishing for data team B in enterprise 1, partly just part of Provisa; the issue is when team A uses Provisa and team B does not and uses BigQuery. Maintainer: not one-off ETL flows, but the data products infra creating listings in other locations that match a data product's terminology or, if not available, align to it in spirit. Decisions: several targets per org; contracts per member table; approvers derived from roles; Alation later (no account); others tested on existing cloud accounts. Research: Dataplex data products, Purview Unified Catalog (API in preview), AWS DataZone, Alation, and ODPS/ODCS for the catalogs that import them."
 - id: REQ-2119
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -90454,7 +90461,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     values are 0, not null), arithmetic, a regular expression, a path, an undirected or variable-length
     relationship, WITH, UNWIND, UNION, IS NULL or OR in an OPTIONAL MATCH''s WHERE, and a MATCH after an
     OPTIONAL MATCH. Each root field''s compile result carries compiled_sparql and sparql_error beside its
-    Cypher. (Split 2026-11-27 after verification: the rules not yet delivered moved to REQ-2332.)'
+    Cypher. (Split 2026-11-27 after verification: the rules not yet delivered moved to REQ-2332.) (Amended 2026-11-28, maintainer) Wherever Open as query offers GraphQL it offers every API front door that serves the same read, OpenAPI (REST), JSON:API, gRPC and OData included, each written from the same compiled read, as it offers SQL, Cypher and SPARQL. Every graph view (the term graph dialog included) is a deep link, its URL carrying the open view and its state (ontology or taxonomy, 2D or 3D, hops, layout, filters, focus), so browser history and a copied URL return to it exactly.'
   use_case: >-
     A curator hands the vocabulary, or a slice of it with its data, to a knowledge-graph or catalog
     tool in a standard RDF format, scoped exactly as the page shows it, and can take the same scope
@@ -98990,7 +98997,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     task or is worth sharing (a contract, a profile run, a role''s effective permissions, a create wizard);
     confirmations, pickers and one-field prompts have none. A deep link survives a reload and opens in a new
     tab with the same state. (5) Polly reaches every screen and every significant dialog, through its deep
-    link or by clicking through from a screen she reaches. (Amended 2026-11-25 by the maintainer, links. (6) Wherever the UI names an object (a source, table, view, column, relationship, command, role, tag, glossary term, metric, data product, document or report), the name is a link to that object''''s deep link, as an IDE or a cloud console links every reference, so a dense screen is navigated by following names; an object the viewer may not open is shown without a link. The ui-audit skill reports an object named as plain text.) (Amended 2026-11-26, maintainer: rule 7, a detail panel body has one vertical rhythm: a shared PanelBody standard sets the spacing between the panel head, a step strip, a section title, its description, the first field and each field group, for read views, forms and wizards alike; no panel sets its own gaps. Rule 8, every page has the page help (?) button in its header, built into the standard page title, with each page''s purpose line and documentation link held in one registry keyed by route; a work surface without the standard title carries the same button in its own header; a page without help content fails a guard test.) (Amended 2026-11-26 by the maintainer, rule 9: on every object management page and the ontology, a detail panel shows an object only while that object is a row of the list the page shows. A remembered selection or a deep link to an object the list leaves out (outside the domains in view, or narrowed out by the search or a filter) opens no detail; the page says once, above the list, which object the link named and why it is not listed, with an action that brings it into view (adds its domain, clears the filter). When a filter, the search or the domains in view remove the selected object from the list, its detail closes.) (Amended 2026-11-26 by the maintainer, rule 10, a modal dialog keeps its buttons in a fixed button bar at its bottom, outside the scrolling content, so scrolling the content never hides them, as the relationship discovery dialog does. One shared modal layout provides the bar, and every modal uses it.) (Amended 2026-11-27 by the maintainer, rule 2. One-field prompts (rename, a single value) are forms like any other and go through the shared form layout; no exemption.) (Amended 2026-11-27 by the maintainer after verification. A standing principle applied to all work, not a release feature; it stays open and off the release train, and a gap found against it becomes an ordinary fix job.) (Amended 2026-11-27, maintainer) The top bar is one row when it fits. Below that width it becomes rows, never wrapping or overlapping. Row 1 holds the logo, the context pickers (Domains, Env, Role) and the icon actions. Row 2 holds the page links. The sub-navigation row stays beneath it, so the two levels of navigation stay adjacent. At 768 pixels wide nothing overlaps and nothing scrolls sideways. (Amended 2026-11-27, maintainer) The Domains picker lists the business domains first, alphabetically, then a divider and a System label, then the internal domains (ontology, meta, ops). The count on the picker is unchanged.'
+    link or by clicking through from a screen she reaches. (Amended 2026-11-25 by the maintainer, links. (6) Wherever the UI names an object (a source, table, view, column, relationship, command, role, tag, glossary term, metric, data product, document or report), the name is a link to that object''''s deep link, as an IDE or a cloud console links every reference, so a dense screen is navigated by following names; an object the viewer may not open is shown without a link. The ui-audit skill reports an object named as plain text.) (Amended 2026-11-26, maintainer: rule 7, a detail panel body has one vertical rhythm: a shared PanelBody standard sets the spacing between the panel head, a step strip, a section title, its description, the first field and each field group, for read views, forms and wizards alike; no panel sets its own gaps. Rule 8, every page has the page help (?) button in its header, built into the standard page title, with each page''s purpose line and documentation link held in one registry keyed by route; a work surface without the standard title carries the same button in its own header; a page without help content fails a guard test.) (Amended 2026-11-26 by the maintainer, rule 9: on every object management page and the ontology, a detail panel shows an object only while that object is a row of the list the page shows. A remembered selection or a deep link to an object the list leaves out (outside the domains in view, or narrowed out by the search or a filter) opens no detail; the page says once, above the list, which object the link named and why it is not listed, with an action that brings it into view (adds its domain, clears the filter). When a filter, the search or the domains in view remove the selected object from the list, its detail closes.) (Amended 2026-11-26 by the maintainer, rule 10, a modal dialog keeps its buttons in a fixed button bar at its bottom, outside the scrolling content, so scrolling the content never hides them, as the relationship discovery dialog does. One shared modal layout provides the bar, and every modal uses it.) (Amended 2026-11-27 by the maintainer, rule 2. One-field prompts (rename, a single value) are forms like any other and go through the shared form layout; no exemption.) (Amended 2026-11-27 by the maintainer after verification. A standing principle applied to all work, not a release feature; it stays open and off the release train, and a gap found against it becomes an ordinary fix job.) (Amended 2026-11-27, maintainer) The top bar is one row when it fits. Below that width it becomes rows, never wrapping or overlapping. Row 1 holds the logo, the context pickers (Domains, Env, Role) and the icon actions. Row 2 holds the page links. The sub-navigation row stays beneath it, so the two levels of navigation stay adjacent. At 768 pixels wide nothing overlaps and nothing scrolls sideways. (Amended 2026-11-27, maintainer) The Domains picker lists the business domains first, alphabetically, then a divider and a System label, then the internal domains (ontology, meta, ops). The count on the picker is unchanged. (Amended 2026-11-28, audit, recommended option accepted) An in-place rename (a tab or a graph name edited where it is shown) is not a one-field prompt and is not a form; it keeps its not-a-form exemption.'
 - id: REQ-2278
   status: complete
   since: 2026-11
@@ -99040,7 +99047,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     when the column is read in the fake environment on DuckDB and on Trino, then each row holds an object with
     an email-shaped email and a phone-shaped phone, and the same row gives the same object on both engines.'
 - id: REQ-2280
-  status: accepted
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Registration & Governance
@@ -99062,6 +99070,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     identity, when a File Crawler source with onedrive:// and one with gdrive:// are registered on a server
     install, then each CSV is a table that answers a query the same as the same file read through file://.'
 
+  tests:
+  - tests/unit/test_cloud_drive_transports.py
+  - tests/unit/test_cloud_drive_engine_reads.py
 - id: REQ-2281
   status: accepted
   target: 2027-Q1
@@ -99277,7 +99288,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1259
 
 - id: REQ-2290
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 2. Authentication & Identity
   category: Platform Admin Break-Glass Access
@@ -99295,6 +99307,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-1264
 
+  tests:
+  - tests/unit/test_breakglass_account.py
+  - tests/unit/test_sandbox_vm_terraform.py
 - id: REQ-2291
   status: in-progress
   target: 2027-Q1
@@ -99448,7 +99463,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1501
 
 - id: REQ-2300
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 6. Execution, Routing, Caching & Performance
   category: Boot-Time Replica Landing
@@ -99464,6 +99480,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-1632
 
+  tests:
+  - tests/unit/test_boot.py
+  - tests/integration/test_boot_keeps_matching_replicas_e2e.py
 - id: REQ-2301
   status: in-progress
   target: 2027-Q1
@@ -100031,7 +100050,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2141
 
 - id: REQ-2335
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 4. Source Connectors
   category: Data Quality Sources
@@ -100048,8 +100068,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2147
 
+  tests:
+  - tests/unit/test_classification_custom_kinds.py
 - id: REQ-2336
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -100065,6 +100088,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2158
 
+  tests:
+  - tests/unit/test_contract_type_check.py
+  - tests/integration/test_contract_type_check_e2e.py
 - id: REQ-2337
   status: in-progress
   target: 2027-Q1
@@ -100083,7 +100109,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2171
 
 - id: REQ-2338
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 10. UI & Admin Surfaces
   category: Profile Runs Terrain View
@@ -100099,6 +100126,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2174
 
+  tests:
+  - tests/unit/test_where_relationships.py
+  - tests/unit/test_ontology_nested_read_bound.py
 - id: REQ-2339
   status: in-progress
   target: 2027-Q1
@@ -100359,7 +100389,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     verification. These are the rules of REQ-2236 not yet delivered, and REQ-2236''s text governs their detail.
     Each grid row''s provenance (made and verified on, baseline pair, last verifying run) is printed on the
     generated pages. Engine-and-source hints are rows of the grid, each with its reproducing test, listed under
-    each source.'
+    each source. (Amended 2026-11-28, audit, recommended option accepted) The baseline pair is not printed on each grid row, as REQ-2236 amended 2026-11-27 already says; the grid prints each row provenance and the engine and source hint rows.'
   related_reqs:
   - REQ-2236
 
@@ -100519,7 +100549,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2267
 
 - id: REQ-2361
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
@@ -100536,6 +100567,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-194
 
+  tests:
+  - tests/unit/test_naming_authority_guard.py
+  - tests/unit/test_naming_bypasses_py.py
+  - tests/unit/test_admin_schema_wiring.py
 - id: REQ-2362
   status: in-progress
   target: 2026-Q4
@@ -100573,3 +100608,33 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     contact calls are checked at setup.
   related_reqs:
   - REQ-1793
+- id: REQ-2363
+  status: in-progress
+  target: 2026-Q4
+  group: 2. Authentication & Identity
+  category: Platform Admin Break-Glass Access
+  feature: sign-in-and-identity-bootstrap
+  priority: MUST
+  type: behavioral
+  description: 'Split from REQ-1264 (audit 2026-11-28, recommended option accepted). The REQ-125 config superuser is removed. Its auth.superuser config, the security.superuser settings, the PROVISA_SUPERUSER environment variables, the terraform superuser variables and the setup writer for them are deleted, and the middleware, auth router and wiring paths that sign it in are removed. The cloud e2e setup signs in with an org_admin personal access token instead. Break-glass (REQ-1264, REQ-2290) is the only recovery account.'
+  scenario: |
+    Given a deployment whose config, environment and terraform name no superuser
+    When an operator needs platform access after the identity provider is down
+    Then they sign in as the break-glass platform-admin account
+    And no auth.superuser setting, PROVISA_SUPERUSER variable or superuser sign-in path exists
+  related_reqs:
+  - REQ-1264
+  - REQ-2290
+- id: REQ-2364
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: OpenAPI Auto-Registration Connector
+  feature: connector-catalog-remote-schemas
+  priority: SHOULD
+  type: behavioral
+  description: 'Split from REQ-2267 (audit 2026-11-28, recommended option accepted). The built-in GraphQL and OpenAPI code source pushes filters, keys, paging and nested selections into one remote call where the strict GraphQL shape allows it; the answer is disaggregated into its tables and DuckDB finishes the governed statement in memory, without landing. Repeats use the response cache (REQ-544); there is no separate fetch cache.'
+  related_reqs:
+  - REQ-2267
+  - REQ-2360
+

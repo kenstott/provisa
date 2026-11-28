@@ -122,6 +122,10 @@ async def root_boot():
     from provisa.api.app import create_app, state
 
     mp = MonkeyPatch()
+    # The boot re-points the process-wide app state at root (AppState.org_id, read from ORG_ID)
+    # and nothing puts it back: every later module's autouse binding then bound root, for which
+    # a fake AppState of its own has no runtime. Undone with the rest at teardown.
+    mp.setattr(state, "org_id", state.org_id)
     mp.setenv("ORG_ID", _ROOT)
     mp.setenv("PROVISA_ENGINE", "trino")
     mp.setenv("PROVISA_CONFIG", _CONFIG)

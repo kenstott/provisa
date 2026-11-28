@@ -184,8 +184,15 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                 for rt in state.org_registry.runtimes()
             ]
 
+        from provisa.federation.engine_wake import attach_if_serving
+
+        async def _engine_serving() -> bool:
+            # REQ-1448: the sweep dials the store through the shared terminal; a shard the idle
+            # reaper took to zero is left alone (never woken, never dialed at its old address).
+            return await attach_if_serving(state)
+
         state._mv_refresh_task = spawn_long_lived(
-            reclamation_loop(_registries, should_run=_holder.holds),
+            reclamation_loop(_registries, should_run=_holder.holds, engine_serving=_engine_serving),
             name="mv-reclamation",
         )
 

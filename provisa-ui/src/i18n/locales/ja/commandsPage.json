@@ -40,7 +40,6 @@
     "noWebhooks": "登録されたWebhookはありません",
     "noFunctionsMatch": "フィルターに一致する関数はありません",
     "noWebhooksMatch": "フィルターに一致するWebhookはありません",
-    "customSchema": "データセット",
     "dash": "—",
     "all": "すべて",
     "contract": "宣言内容",

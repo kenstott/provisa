@@ -53,6 +53,8 @@ import { IndexBadge, ReaderBadges, StaleBadge, StatusBadge } from "./LibraryBadg
 import { LibraryAddForm } from "./LibraryAddForm";
 import { LibraryDetail } from "./LibraryDetail";
 import { addedOrRefreshed, libraryRowTexts, REVIEWS_DUE_PARAM, when } from "./libraryParts";
+import { PageActions } from "../../components/PageActions";
+import { PageCommand } from "../../components/PageCommand";
 
 /** How often the list is read again while a document is indexing, in milliseconds. */
 const POLL_MS = 3000;
@@ -236,37 +238,52 @@ export function LibraryPage() {
           testId="reflib-filter"
           remember="library"
         />
-        <div className="page-actions">
-          <Checkbox
-            label={t("referenceLibrary.reviewsDueOnly")}
-            checked={reviewsDueOnly}
-            onChange={(e) => setReviewsDueOnly(e.currentTarget.checked)}
-            styles={{ label: { whiteSpace: "nowrap" } }}
-            data-testid="reflib-reviews-due-only"
-          />
+        <PageActions>
+          <PageCommand
+            description={t("pageCommands.reviewsDue")}
+            docs="ontology/#finding-terms-in-documents-and-tables"
+          >
+            <Checkbox
+              label={t("referenceLibrary.reviewsDueOnly")}
+              checked={reviewsDueOnly}
+              onChange={(e) => setReviewsDueOnly(e.currentTarget.checked)}
+              styles={{ label: { whiteSpace: "nowrap" } }}
+              data-testid="reflib-reviews-due-only"
+            />
+          </PageCommand>
           {canEdit && stale > 0 && (
-            <Button
-              variant="light"
-              color="orange"
-              data-testid="reflib-reembed-all"
-              loading={reembedding}
-              onClick={reembedAll}
+            <PageCommand
+              description={t("pageCommands.reembedAll")}
+              docs="ontology/#finding-terms-in-documents-and-tables"
             >
-              {t("referenceLibrary.reembedAll", { n: stale })}
-            </Button>
+              <Button
+                variant="light"
+                color="orange"
+                data-testid="reflib-reembed-all"
+                loading={reembedding}
+                onClick={reembedAll}
+              >
+                {t("referenceLibrary.reembedAll", { n: stale })}
+              </Button>
+            </PageCommand>
           )}
           {canEdit && !adding && (
-            <Button
-              data-testid="reflib-add"
-              onClick={() => {
-                setAdding(true);
-                setSelected(null);
-              }}
+            <PageCommand
+              description={t("pageCommands.addDocument")}
+              docs="ontology/#finding-terms-in-documents-and-tables"
             >
-              {t("referenceLibrary.add")}
-            </Button>
+              <Button
+                data-testid="reflib-add"
+                onClick={() => {
+                  setAdding(true);
+                  setSelected(null);
+                }}
+              >
+                {t("referenceLibrary.add")}
+              </Button>
+            </PageCommand>
           )}
-        </div>
+        </PageActions>
       </div>
       <Text c="dimmed" size="sm" mb="sm" data-testid="reflib-why">
         {t("referenceLibrary.why")}

@@ -729,14 +729,18 @@ class NativeEngineBackend(EngineBackend):
         # REQ-862: the ops signals this engine lands itself, read at otel.signals.<table> as
         # Trino reads its Iceberg catalog -- defined like the region's ops views, over no store.
         if self.landed_signals:
-            from provisa.observability.native_traces import signal_views, traces_dir
+            from provisa.observability.native_traces import ReadLease, signal_views, traces_dir
 
+            root = traces_dir()
+            # Every query holds a lease on the folder while it runs: compaction removes no file a
+            # running query may still open (native_traces.ReadLease).
+            self._runtime.hold_reads(root, ReadLease(root))
             # REQ-2236: an ops view is PostgreSQL SQL written by hand, read as PostgreSQL reads it.
             self._runtime.attach_region_ops(
                 "otel",
                 "signals",
                 {},
-                signal_views(traces_dir(), lambda s: self.transpile_physical(s, generated=False)),
+                signal_views(root, lambda s: self.transpile_physical(s, generated=False)),
             )
         return complete
 

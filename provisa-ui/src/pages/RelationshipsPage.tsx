@@ -24,7 +24,6 @@ import { ErdView } from "../components/erd/ErdView";
 import { useErdView } from "../components/erd/useErdView";
 import { useScreenInputs } from "../mcp/screenState";
 import { FilterInput } from "../components/admin/FilterInput";
-import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { SqlModelingModal } from "../components/SqlModelingModal";
@@ -80,6 +79,8 @@ import { ListBulkBar } from "../components/list/ListBulkBar";
 import { JoinThroughAction } from "../components/relationships/JoinThroughAction";
 import { ColumnFilterMenu } from "./sql/ColumnFilterMenu";
 import type { FilterSpec } from "./sql/columnFilter";
+import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -755,71 +756,71 @@ export function RelationshipsPage() {
           onChange={updateSearch}
           placeholder={t("relationshipsPage.filterPlaceholder")}
         />
-        <div className="page-actions">
+        <PageActions>
           {canManage && (
-            <Button
-              data-tour="rels-add"
-              data-testid="rels-add-toggle"
-              variant={showForm ? "outline" : "filled"}
-              aria-label={showForm ? t("relationshipsPage.closeForm") : undefined}
-              onClick={() => {
-                // One thing in the panel at a time: the form replaces whatever row was open.
-                setSaveProblem("");
-                setExpanded(null);
-                setEditingRel(null);
-                setReverseForm(null);
-                // The form opens empty, and what was typed in it does not outlive it.
-                setForm(EMPTY_FORM);
-                setShowForm(!showForm);
-              }}
+            <PageCommand
+              description={t("pageCommands.addRelationship")}
+              docs="configuration/#relationships"
             >
-              {showForm ? <X size={14} /> : t("relationshipsPage.addRelationship")}
-            </Button>
+              <Button
+                data-tour="rels-add"
+                data-testid="rels-add-toggle"
+                variant={showForm ? "outline" : "filled"}
+                aria-label={showForm ? t("relationshipsPage.closeForm") : undefined}
+                onClick={() => {
+                  // One thing in the panel at a time: the form replaces whatever row was open.
+                  setSaveProblem("");
+                  setExpanded(null);
+                  setEditingRel(null);
+                  setReverseForm(null);
+                  // The form opens empty, and what was typed in it does not outlive it.
+                  setForm(EMPTY_FORM);
+                  setShowForm(!showForm);
+                }}
+              >
+                {showForm ? <X size={14} /> : t("relationshipsPage.addRelationship")}
+              </Button>
+            </PageCommand>
           )}
           {canManage && rejectedCount > 0 && (
-            <Button variant="default" onClick={handleClearRejections}>
-              {t("relationshipsPage.clearRejections")}
-            </Button>
+            <PageCommand
+              description={t("pageCommands.clearRejections")}
+              docs="admin/#relationship-discovery"
+            >
+              <Button variant="default" onClick={handleClearRejections}>
+                {t("relationshipsPage.clearRejections")}
+              </Button>
+            </PageCommand>
           )}
-          {/* Each icon is its own hover target. A row of "?" glyphs beside a row of icons
-              would double the thing a reader is trying to decode. */}
-          <HelpBubble
-            title={t("relationshipsPage.modelingHelpTitle")}
-            paragraphs={[t("relationshipsPage.modelingHelpBody")]}
-            ariaLabel={t("relationshipsPage.sqlModelingTool")}
-            testId="rels-modeling-help"
-            target={
-              <ActionIcon
-                variant="subtle"
-                aria-label={t("relationshipsPage.sqlModelingTool")}
-                onClick={() => setShowModelingModal(true)}
-              >
-                <Code2 size={14} />
-              </ActionIcon>
-            }
-          />
-          <ErdToggle
-            page="relationships"
-            title={t("relationshipsPage.erdHelpTitle")}
-            body={t("relationshipsPage.erdHelpBody")}
-            label={t("relationshipsPage.viewErd")}
-          />
+          {/* Each icon is its own hover target: its command card says what it opens. */}
+          <PageCommand
+            description={t("relationshipsPage.modelingHelpBody")}
+            docs="configuration/#relationships"
+          >
+            <ActionIcon
+              variant="subtle"
+              aria-label={t("relationshipsPage.sqlModelingTool")}
+              data-testid="rels-modeling-open"
+              onClick={() => setShowModelingModal(true)}
+            >
+              <Code2 size={14} />
+            </ActionIcon>
+          </PageCommand>
+          <PageCommand
+            description={t("relationshipsPage.erdHelpBody")}
+            docs="configuration/#relationships"
+          >
+            <ErdToggle page="relationships" label={t("relationshipsPage.viewErd")} />
+          </PageCommand>
           {canManage && (
-            <HelpBubble
-              title={t("relationshipsPage.suggestHelpTitle")}
-              paragraphs={[t("relationshipsPage.suggestHelpBody")]}
-              ariaLabel={t("relationshipsPage.suggestWithAi")}
-              testId="rels-suggest-help"
-              target={<DiscoverButton running={discovery.running} onOpen={openDiscover} />}
-            />
+            <PageCommand
+              description={t("relationshipsPage.suggestHelpBody")}
+              docs="admin/#relationship-discovery"
+            >
+              <DiscoverButton running={discovery.running} onOpen={openDiscover} />
+            </PageCommand>
           )}
-          <HelpBubble
-            title={t("relationshipsPage.purposeTitle")}
-            paragraphs={[t("relationshipsPage.purposeBody"), t("relationshipsPage.purposeAdd")]}
-            ariaLabel={t("relationshipsPage.purposeAria")}
-            testId="rels-purpose-help"
-          />
-        </div>
+        </PageActions>
       </div>
 
       {discoverError && (

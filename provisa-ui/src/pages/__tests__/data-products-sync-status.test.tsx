@@ -46,7 +46,10 @@ const auth = vi.hoisted(() => ({ capabilities: ["data_product_read"] as string[]
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
+    // REQ-1659: product read in every domain, so every product is listed whatever its status.
+    selectedRoles: [
+      { id: "admin", effectiveCapabilities: ["data_product_read"], domain_access: ["*"] },
+    ],
     availableRoles: [],
     capabilities: auth.capabilities,
   }),

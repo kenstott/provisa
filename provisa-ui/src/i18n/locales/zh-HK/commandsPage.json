@@ -40,7 +40,6 @@
     "noWebhooks": "尚未註冊任何 Webhook",
     "noFunctionsMatch": "沒有符合篩選條件的函數",
     "noWebhooksMatch": "沒有符合篩選條件的 Webhook",
-    "customSchema": "數據集",
     "dash": "—",
     "all": "全部",
     "contract": "聲明",

@@ -508,7 +508,9 @@ def test_a_cloud_deploy_reaches_the_sandbox_vm_too():
     import re
     from pathlib import Path
 
-    deploy = (Path(__file__).resolve().parents[2] / "scripts" / "deploy-cloud.sh").read_text()
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    # deploy-cloud.sh with the node library it sources (sandbox_on_own_vm, node_containers, ...).
+    deploy = (scripts / "cloud-node-lib.sh").read_text() + (scripts / "deploy-cloud.sh").read_text()
     body = deploy[deploy.index("deploy_sandbox_vm() {") :]
     body = body[: body.index("\n}\n")]
     assert 'gcloud compute instances start "$SANDBOX_NODE"' in body

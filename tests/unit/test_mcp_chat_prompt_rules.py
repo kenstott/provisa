@@ -320,3 +320,31 @@ class TestReadBack:
         assert "Say a page was opened with something only from that result" in _flat(
             _navigate_tool()["description"]
         )
+
+
+class TestGraphExplorersRunUnlessHeld:  # REQ-1159 (amended 2026-11-28)
+    """Cypher and SPARQL run a handed query on open with no autoRun; a write or a query with
+    placeholders to fill is held unrun. The other surfaces keep autoRun."""
+
+    def test_the_navigate_description_tells_the_graph_explorers_rule(self):
+        d = _flat(_navigate_tool()["description"])
+        assert (
+            "/graph and /sparql run what they are handed as soon as they open, with no autoRun" in d
+        )
+        assert '"write" for a statement that writes' in d
+        assert '"parameters" for one that still carries placeholders the user must fill' in d
+        assert "The other surfaces run it immediately when state.autoRun is true" in d
+
+    def test_the_state_description_keeps_autorun_off_the_graph_explorers(self):
+        d = _flat(_navigate_tool()["input_schema"]["properties"]["state"]["description"])
+        assert 'On every route but /graph and /sparql, also set "autoRun": true' in d
+        assert "/graph and /sparql take no autoRun" in d
+        assert "Always also set" not in d
+
+    def test_the_system_prompt_tells_the_graph_explorers_rule(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "Cypher /graph and SPARQL /sparql run a handed query as soon as they open" in s
+        assert 'state.hold="write"' in s
+        assert 'state.hold="parameters"' in s
+        assert "On every other surface pass state.autoRun=true" in s
+        assert "Always pass state.autoRun=true" not in s

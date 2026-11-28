@@ -32,12 +32,14 @@
 | `arg_kind` | התנהגות |
 | --- | --- |
 | `column_value` | סקלר; מועבר ישירות במטען הבקשה |
-| `table_ref` | עצל; Provisa מעבירה את הפניית היחס כמות שהיא; השירות מביא את הנתונים |
-| `result_set` | להוט; Provisa ממטריאלת את היחס המופנה ושולחת את שורותיו |
+| `table_ref` | עצל; Provisa מעבירה את שם הטבלה; השירות מביא את הנתונים |
+| `result_set` | להוט; Provisa קוראת את היחס ושולחת את שורותיו |
 
 פקודות `http` ו-`grpc` **חייבות** להצהיר על ארגומנט `table_ref` או `result_set` אחד לפחות.
 פקודה חיצונית המקבלת ארגומנטים סקלריים בלבד הייתה מופעלת פעם אחת לכל שורה, מה שמסכל
 איגוד לאצוות. המשגר דוחה תצורה זו בזמן הקריאה (422).
+
+ארגומנט יחס שניתן כטבלה מציין אותה בשמה הלוגי, ה-`schema.table` שבו משפט SQL קורא אותה (למשל `pet_store.orders`). טבלת `result_set` נקראת דרך הצינור המנוהל בתור התפקיד הקורא, כך שמסנני השורות, המסכות ונראות העמודות של אותו תפקיד חלים, ונקראות רק העמודות המוצהרות של הארגומנט. הפניה פיזית `source.schema.table`, או כל שם ש-SQL אינו מגיש בו טבלה, נדחית עם HTTP 400 תוך ציון הצורה הנדרשת. ניתן לתת `result_set` גם כשאילתה, שרצה באותו אופן, או כמערך JSON של שורות.
 
 פקודה המחזירה קבוצה (מוצהרת דרך `output_columns` ו-`return_schema`) היא
 פונקציה מוערכת-טבלה. השתמשו בה בסעיף `FROM` או ב-`JOIN`.
@@ -56,7 +58,7 @@
 - **פלט:** שורות המוחזרות על ידי הפקודה מאומתות מול `output_columns` לפני שהן
   מגיעות לקורא.
 - **הטלה צרה:** כשחוזה קלט מוצהר, שאילתת המטריאליזציה מטילה
-  **רק את העמודות ההן** (`SELECT "id", "region" FROM ...`) במקום `SELECT *`.
+  **רק את העמודות ההן** (`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`) במקום `SELECT *`.
 
 ### אוצר מילות הסוגים של IR {: #the-ir-type-vocabulary }
 
@@ -145,8 +147,8 @@ functions:
 ```sql
 -- Enrich the orders relation and join the result back inline.
 SELECT o.id, o.amount, e.score, e.region_label
-FROM   orders o
-JOIN   enrich_orders('main.public.orders') e ON o.id = e.id
+FROM   pet_store.orders o
+JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
 WHERE  e.score > 0.8;
 ```
 

@@ -28,10 +28,14 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   metaReader: async () => (await import("./termServer")).reader(),
   dataGraphql: async (q: string) => wire.read!(q),
 }));
-// The terms' Cypher label is the server's (/data/graph-schema); here, the meta model's.
+// The terms' Cypher label and link types are the server's (/data/graph-schema); here, the meta
+// model's.
 vi.mock("../ontologyCypher", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ontologyCypher")>()),
-  termsCypherLabel: async () => "Ontology:Terms",
+  termsCypherGraph: async () => ({
+    label: "Ontology:Terms",
+    links: ["KIND_OF", "PART_OF", "RELATED_TO"],
+  }),
 }));
 
 import { loadOntology } from "../useOntology";
@@ -142,7 +146,12 @@ describe("All hops", () => {
     const loaded = await loadOntology("analyst", snippet(Infinity));
     if (loaded === null || loaded.over !== undefined) throw new Error("not drawn");
     expect(loaded.language).toBe("cypher");
-    expect(loaded.query).toBe("MATCH p = (t:Ontology:Terms {id: 7})-[*]-(n) RETURN p");
+    // Typed to the term links, its ends terms, four steps out: as far as the walk went (5 is four
+    // steps from 7), each term reached once and the links between them, never every path.
+    expect(loaded.query).toBe(
+      "MATCH (t:Ontology:Terms {id: 7})-[:KIND_OF|PART_OF|RELATED_TO*0..4]-(a:Ontology:Terms) " +
+        "OPTIONAL MATCH (a)-[r:KIND_OF|PART_OF|RELATED_TO]->(b:Ontology:Terms) RETURN DISTINCT a, r, b",
+    );
     // It draws the connected part to its end.
     expect(
       loaded.data.nodes
@@ -158,5 +167,33 @@ describe("All hops", () => {
     if (loaded === null || loaded.over !== undefined) throw new Error("not drawn");
     expect(loaded.language).toBe("graphql");
     expect(loaded.query).toBe(ontologyQuery(reader(), snippet(2)));
+  });
+});
+
+describe("every Hops value opens as Cypher too (REQ-2136, REQ-2174)", () => {
+  for (const depth of [1, 2, 3])
+    it(`walks ${depth} hops from the focus, as the view reads`, async () => {
+      wire.read = server(WORLD).read;
+      const loaded = await loadOntology("analyst", snippet(depth));
+      if (loaded === null || loaded.over !== undefined) throw new Error("not drawn");
+      expect(loaded.walk).toEqual({ roots: [7], depth, edgeTypes: [] });
+    });
+
+  it("walks All's own depth: as far as its walk went", async () => {
+    wire.read = server(WORLD).read;
+    const loaded = await loadOntology("analyst", snippet(Infinity));
+    if (loaded === null || loaded.over !== undefined) throw new Error("not drawn");
+    expect(loaded.walk).toEqual({ roots: [7], depth: 4, edgeTypes: [] });
+  });
+
+  it("with no focus and no search, reads every term its filters keep at no hop", async () => {
+    wire.read = server(WORLD).read;
+    const loaded = await loadOntology("analyst", {
+      ...snippet(2),
+      focus: null,
+      edgeTypes: ["KIND_OF"],
+    });
+    if (loaded === null || loaded.over !== undefined) throw new Error("not drawn");
+    expect(loaded.walk).toEqual({ roots: [1, 2, 3, 4, 5, 7], depth: 0, edgeTypes: ["KIND_OF"] });
   });
 });
