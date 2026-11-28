@@ -191,3 +191,22 @@ async def test_an_upload_that_cannot_be_kept_is_refused_to_the_model(
 async def test_the_prompt_sends_drafted_code_through_upload_code():
     assert "Code you wrote for a code source is uploaded with upload_code" in chat._SYSTEM
     assert "upload_code" in chat._CLIENT_TOOL_NAMES
+
+
+async def test_polly_is_told_a_read_only_function_is_a_query_not_a_command():
+    """Maintainer, 2026-11-28: Polly wrote a sample command whose function only computed and
+    returned rows, tagged @command (a mutation). The rule for each tag, with an example of each,
+    reaches the model in the prompt and in upload_code's own description."""
+    rule = code_upload.CODE_TAGS_RULE
+    for tag, meaning in (
+        ("@table", "a catalog table that returns rows"),
+        ("@query", "a command of kind query"),
+        ("@command", "a command of kind mutation"),
+    ):
+        assert f"{tag} -- {meaning}" in rule
+        assert f"with {tag}." in rule  # its one-line example
+    assert "only computes or reads and returns rows is @query, never @command" in rule
+    assert "a code resolver is a @query with exactly two table parameters" in rule.lower()
+    assert rule in chat._SYSTEM
+    (upload,) = [t for t in chat._CLIENT_TOOLS if t["name"] == code_upload.UPLOAD_CODE]
+    assert rule in upload["description"]
