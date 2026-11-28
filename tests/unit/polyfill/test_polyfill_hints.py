@@ -208,10 +208,11 @@ def test_the_opengauss_hints_form_is_what_its_engine_runs(statement: str):
         lambda node: form.function(node, "postgres") or node
     )
     expected = by_hint.sql(dialect="postgres")
-    assert "rawlike" in expected or "rawnlike" in expected
+    assert "rawlike(hextoraw(" in expected.lower() or "rawnlike(hextoraw(" in expected.lower()
     on_opengauss = transpile(statement, "postgres", generated=False, engine_kind="opengauss")
     assert on_opengauss == expected
-    assert "raw" not in transpile(statement, "postgres", generated=False, engine_kind="pg")
+    off = transpile(statement, "postgres", generated=False, engine_kind="pg")
+    assert "raw" not in off.lower()
 
 
 def test_the_opengauss_hints_form_leaves_any_other_node():
