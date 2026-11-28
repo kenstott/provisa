@@ -506,6 +506,10 @@ export interface RegisteredTable {
   schemaName: string;
   tableName: string;
   alias: string | null;
+  // REQ-2361: the SQL schema and name a statement names it by, read from the server's names table
+  // (never computed here); null when the published build names no such table.
+  sqlSchema: string | null;
+  sqlName: string | null;
   description: string | null;
   // REQ-413: when it was registered (ISO 8601); null only for a draft not yet registered.
   registeredAt: string | null;
@@ -611,6 +615,8 @@ export const LISTED_TABLE_FIELDS = [
   "schemaName",
   "tableName",
   "alias",
+  "sqlSchema",
+  "sqlName",
   "description",
   "withdrawn",
   "sourceWithdrawn",

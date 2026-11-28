@@ -565,6 +565,9 @@ class _Binder:
             if cond is not None:
                 conjuncts += _flatten_and(cond)
         per_read: dict[int, tuple[exp.Table, list[list[dict]]]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for key, join in self._read_joins(select):
+            table = next(t for t in _own_sources(select).values() if id(t) == key[0])
+            per_read.setdefault(key[0], (table, []))[1].append([{key[2]: join}])
         for cond in conjuncts:
             branches = self._branches(cond, select)
             if not any(branches):
@@ -583,6 +586,41 @@ class _Binder:
                 sets = _distinct(_product(sets, own))
             self._cap(table.name, len(sets))
             self.reads.append(_Read(table, sets))
+
+    def _read_joins(self, select: exp.Select) -> list[tuple[tuple[int, str, str], JoinKey]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """A parameter ``select`` keys a relationship field's grouped read by
+        (``sql_selection.rel_read``, #362): the read is LEFT JOINed on ``r._keyN = t0.k`` and
+        ``select`` projects the parameter as ``_keyN``. That equality is the join's: the
+        parameter takes the distinct values of ``t0.k`` under ``t0``'s own conditions, as the
+        correlated equality the read replaced gave it. Each as ((read, parameter key), join)."""
+        from provisa.compiler.sql_rewrite import keyed_select, read_keys
+        from provisa.core.parameter_binding import ParameterByEqualityOnly
+
+        found: list[tuple[tuple[int, str, str], JoinKey]] = []
+        node: exp.Expr | None = select.parent  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        while node is not None:
+            if isinstance(node, exp.Join) and isinstance(node.this, exp.Subquery):
+                read = node.this.this
+                for read_key, outer in read_keys(node) or []:
+                    keyed = (
+                        keyed_select(read, read_key.name) if isinstance(read, exp.Select) else None
+                    )
+                    if keyed is None or keyed[0] is not select:
+                        continue
+                    parameter = self._parameter(_unwrap(keyed[1]), select)
+                    if parameter is None:
+                        continue
+                    table, name = parameter
+                    join_key = self._join_key(outer, table, select)
+                    if join_key is None:
+                        if name.lower() not in self.real:
+                            raise ParameterByEqualityOnly(name, "= (an expression)")
+                        # A real column: the join filters it, as any condition on one does.
+                        self._refuse(keyed[1], select)
+                        continue
+                    found.append(((id(table), name.lower(), name), join_key))
+            node = node.parent
+        return found
 
     def _cap(self, table: str, calls: int) -> None:
         from provisa.core.parameter_binding import ParameterCallsOverCap

@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{name}} в {{surface}}",
+    "linkLabel": "Вызвать {{name}} в {{surface}}",
+    "open": "Открыть",
+    "givenAs": "Как задаётся {{name}}",
+    "sourceTable": "Таблица",
+    "sourceQuery": "Запрос",
+    "sourceRows": "Строки",
+    "tableHint": "Таблица, которую вы можете читать; передаются её первые {{cap}} строк.",
+    "queryHint": "Передаются первые {{cap}} строк.",
+    "rowsHint": "CSV, первая строка которого называет столбцы, или JSON-массив объектов; не более {{cap}} строк.",
+    "missing": "Не задано: {{names}}",
+    "notNumber": "{{name}} — не число",
+    "notBoolean": "{{name}} — не true и не false",
+    "notJson": "{{name}} — не JSON",
+    "notRows": "{{name}}: вставьте CSV, первая строка которого называет столбцы, или JSON-массив объектов",
+    "overCap": "{{name}}: не более {{cap}} строк",
+    "notReadable": "{{name}}: выбранную таблицу вы читать не можете"
+  }
+}

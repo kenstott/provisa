@@ -196,42 +196,6 @@ def test_a_table_with_a_preflight_check_over_its_rows_is_built_by_the_replicator
     assert built == [KEY] and spec.handle.replica_key == KEY
 
 
-def _seed(posted: datetime) -> list[dict]:
-    return [
-        {"id": 9, "event_type": "replace", "payload": {"bootstrap": True}, "created_at": posted}
-    ]
-
-
-async def _start_model_build(db, at: datetime) -> None:
-    async with db.acquire() as conn:
-        await replica_state.request_build(conn, KEY, replica_state.REASON_MODEL, now=at)
-        await replica_state.claim(conn, KEY, holder="t:1", now=at, retry=RetryPolicy(60, 3600))
-
-
-async def test_the_boot_seed_is_answered_by_the_model_build_it_raced(db):
-    """The model's build of this launch started after the seed was posted: it reads the source's
-    current rows, so the seed asks for nothing more -- not a second, 'refresh' build."""
-    seeded = datetime(2026, 10, 4, 12, 0, 0, tzinfo=UTC)
-    await _start_model_build(db, seeded.replace(second=1))
-    kicks: list = []
-    assert await _handle(db, kicks)(_seed(seeded.replace(tzinfo=None)), prior_hash=None) is None
-    record = await _record(db)
-    assert (record.build_state, record.requested_reason) == ("building", "model")
-    assert kicks == []
-    await _complete(db, content_hash="5:abc")
-    assert (await _record(db)).build_state == "idle"  # built once
-
-
-async def test_a_build_already_running_when_the_seed_was_posted_is_built_again(db):
-    """A build that started before the seed may have read past what the seed stands for."""
-    started = datetime(2026, 10, 4, 12, 0, 0, tzinfo=UTC)
-    await _start_model_build(db, started)
-    kicks: list = []
-    assert await _handle(db, kicks)(_seed(started.replace(second=5)), prior_hash=None) is None
-    assert (await _record(db)).requested_reason == "refresh"
-    assert kicks == [1]
-
-
 async def test_an_unchanged_probe_stamps_the_replica_verified(db):
     """REQ-855: the node's probe found the source unchanged; the replica is current as of then,
     and the source processor hands the probe exactly this hook."""

@@ -91,6 +91,29 @@ def column_selection(column: dict) -> str:
     return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
 
 
+def with_registered_columns(
+    columns: list[dict], registered: list[tuple[str, str | None, str | None]]
+) -> list[dict]:
+    """A remote GraphQL table's ``columns`` as the process holds them (the endpoint's schema, when
+    the source was read from its endpoint), with every column the model registers for the table,
+    each ``(name, data_type, gql_selection)`` and none a parameter: every reader of the table
+    selects each registered column. A registered column's ``gql_selection`` is how it is read
+    (``employee_id: employee { id }`` reads the id of the one ``employee`` the remote type holds);
+    a registered column the endpoint's schema does not list is selected as registered."""
+    from provisa.compiler.naming import apply_sql_name
+
+    out = list(columns)
+    held = {apply_sql_name(c["name"]): i for i, c in enumerate(out)}
+    for name, data_type, selection in registered:
+        at = held.get(apply_sql_name(name))
+        if at is None:
+            column = {"name": name, "type": data_type}
+            out.append({**column, "gql_selection": selection} if selection else column)
+        elif selection:
+            out[at] = {**out[at], "gql_selection": selection}
+    return out
+
+
 def _field_query(
     field_name: str,
     columns: list[str],
@@ -361,7 +384,7 @@ async def _connection_page(
         payload = {"query": query, "variables": {**read.variables, _CURSOR_VAR: cursor}}
         resp = await _post(client, read.url, payload, read.headers, read.policy)
         data: dict = {}
-        answered: object = resp.status_code
+        answered: int | list[str] = resp.status_code
         too_heavy = resp.status_code in _PAGE_TOO_HEAVY
         if not too_heavy:
             resp.raise_for_status()

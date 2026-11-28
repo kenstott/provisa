@@ -170,6 +170,14 @@ class TestHowEachIsCreated:
         assert "http_path" in types["databricks"].federation_hints
         assert set(st.ATHENA_HINTS) <= set(types["athena"].federation_hints)
 
+    def test_types_whose_tables_provisa_produces_have_no_setup_flow(self):
+        # REQ-2234 (amended 2026-11-27): their tables are not registered through the setup flow.
+        types = _by_name()
+        without = {name for name, d in types.items() if not d.setup_flow}
+        assert without == {"data_profiler", "great_expectations", "soda"}
+        assert types["postgresql"].setup_flow is True
+        assert st.as_json(types["data_profiler"])["setup_flow"] is False
+
 
 _CREDENTIAL = re.compile(r"(^|_)(password|secret|token|api_key|account_key|secret_key)$")
 # Field names that match but carry no credential: a flag choosing token sign-in.

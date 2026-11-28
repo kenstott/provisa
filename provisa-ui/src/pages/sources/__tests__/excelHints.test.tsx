@@ -53,12 +53,14 @@ describe("what a files source's Excel hints save", () => {
 
   it("keep the rest of the mapping, and leave no hints when none is set", () => {
     const fields = withExcelHints({}, excelHintsFromMapping(JSON.stringify(MAPPING)));
-    expect(JSON.parse(filesMappingJson(JSON.stringify(MAPPING), fields))).toEqual(MAPPING);
+    expect(JSON.parse(filesMappingJson(JSON.stringify(MAPPING), fields, "file://"))).toEqual(
+      MAPPING,
+    );
     const cleared = withExcelHints({}, NO_EXCEL_HINTS);
-    expect(JSON.parse(filesMappingJson(JSON.stringify(MAPPING), cleared))).toEqual({
+    expect(JSON.parse(filesMappingJson(JSON.stringify(MAPPING), cleared, "file://"))).toEqual({
       crawl: MAPPING.crawl,
     });
-    expect(filesMappingJson(null, {})).toBe("{}");
+    expect(filesMappingJson(null, {}, "file://")).toBe("{}");
   });
 
   it("drop an entry with no name or no hint", () => {

@@ -1277,6 +1277,10 @@ async def graph_schema(
                 }
                 for field, info in surface.table_path_map.items()
             ],
+            # REQ-1159 (amended 2026-11-27): every command the role's GraphQL schema offers, by the
+            # names it is called by on each surface, so a client writes its call (a command's Query
+            # it line) by the field and names the compiler gave it rather than re-deriving them.
+            "commands": served_commands(surface.schema),
             "relationship_types": [
                 {
                     "type": r.rel_type,
@@ -1302,6 +1306,28 @@ async def graph_schema(
             ],
         }
     )
+
+
+#: The languages a command's call is written in on the surfaces a client calls it on by name.
+_CALL_LANGUAGES = ("sql", "cypher", "rest")
+
+
+def served_commands(schema: Any) -> list[dict]:
+    """Each command field of ``schema`` (REQ-1159, amended 2026-11-27): the command's registered
+    name and domain, its GraphQL root type and field, and its name in each of
+    :data:`_CALL_LANGUAGES` (None when it is excluded from one, REQ-2168)."""
+    from provisa.api.command_fields import command_fields
+
+    return [
+        {
+            "command": cf.command,
+            "domain_id": cf.domain_id,
+            "graphql_root": (schema.query_type if cf.is_read else schema.mutation_type).name,
+            "graphql_field": cf.field_name,
+            "names": {language: cf.name_in(language) for language in _CALL_LANGUAGES},
+        }
+        for cf in command_fields(schema)
+    ]
 
 
 def _countable_labels(

@@ -262,11 +262,11 @@ def _gql_state():
     ("columns", "own", "kept"),
     [
         (
-            [{"column_name": "id", "data_type": "integer"}],
+            [{"column_name": "id", "data_type": "integer", "gql_selection": None}],
             None,
             600,
         ),  # no argument: the source's TTL, not a fixed 300
-        ([{"column_name": "id", "data_type": "integer"}], 45, 45),
+        ([{"column_name": "id", "data_type": "integer", "gql_selection": None}], 45, 45),
         (
             [
                 {

@@ -633,6 +633,8 @@ services:
       # bootstrap to invite-based multi-org. Absent/empty (enterprise default) keeps the
       # single-administrator REQ-1266 mode. Interpolated from the 600 systemd env_file.
       PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:-}"
+      # REQ-1296: the bootstrap org id, written as root into the env_file by write_env_file.
+      ORG_ID: "\${ORG_ID:-}"
       # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
       # only under it (provisa/security/sni.py); unset, no host names an org.
       VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
@@ -1289,6 +1291,12 @@ write_env_file() {
       set_keys+="${var} "
     fi
   done
+  # REQ-1296: a new install's bootstrap org id is 'root'. An env file that already has an ORG_ID
+  # line keeps it: an existing install keeps its org (maintainer decision 2026-11-27).
+  if [ ! -f "$env_file" ] || ! grep -q '^ORG_ID=' "$env_file"; then
+    printf 'ORG_ID=root\n' >> "$merged"
+    set_keys+="ORG_ID "
+  fi
   if [ -f "$env_file" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       key="${line%%=*}"
@@ -1498,7 +1506,10 @@ _find_payload() {
 # torch among them (build-appimage.sh fetches it from PyTorch's CPU index), so no index is used.
 setup_native_venv() {
   local venv="${PROVISA_HOME}/venv"
-  if [ -x "${venv}/bin/python3" ] && "${venv}/bin/python3" -c "import provisa" 2>/dev/null; then
+  # -I: vm-run cds to ~/provisa before every command; without -I, python -c would import the
+  # checkout's provisa/ (no compiled _encoders.so) instead of the venv's.  Same fix as
+  # dc53c8fd1a applied to the macOS and Windows installers.  REQ-2194.
+  if [ -x "${venv}/bin/python3" ] && "${venv}/bin/python3" -I -c "import provisa" 2>/dev/null; then
     return 0
   fi
 
@@ -1537,7 +1548,8 @@ setup_native_venv() {
     exit 1
   }
   # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
-  "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
+  # -I: isolate from cwd (vm-run cds to ~/provisa; the checkout's provisa/ has no compiled .so).
+  "${venv}/bin/python3" -I -c "import provisa._encoders.pgwire" || {
     err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."
     exit 1
   }

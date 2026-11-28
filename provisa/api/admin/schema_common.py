@@ -558,10 +558,26 @@ def files_source_glob_refusal(input: SourceInput) -> Optional[MutationResult]:  
 
     if input.type != "files" or not input.path:
         return None
-    if _json.loads(input.mapping_json or "{}").get("crawl") is not None:
+    mapping = _json.loads(input.mapping_json or "{}")
+    if mapping.get("crawl") is not None:
         return None
+    from provisa.file_source.cloud_drive import drive_storage_options
+
+    # REQ-2280: a onedrive:// or gdrive:// glob is listed with the source's own sign-in.
+    storage_options = drive_storage_options(
+        {
+            "id": input.id,
+            "path": input.path,
+            "database": input.database,
+            "username": input.username,
+            "password": input.password,
+            "mapping": mapping,
+        }
+    )
     try:
-        require_source_glob_matches(org_files.resolve_path(resolve_secrets(input.path)))
+        require_source_glob_matches(
+            org_files.resolve_path(resolve_secrets(input.path)), storage_options
+        )
     except SourceGlobMatchesNothing as exc:
         return MutationResult(
             success=False,

@@ -71,7 +71,11 @@ def _table(name: str, cols: tuple[str, ...]):
     return SimpleNamespace(
         schema_name="s",
         table_name=name,
-        columns=[SimpleNamespace(name=c, native_filter_type=None) for c in cols],
+        # A registry row's columns (registry_view): each read by its own name.
+        columns=[
+            SimpleNamespace(name=c, data_type=None, native_filter_type=None, gql_selection=None)
+            for c in cols
+        ],
     )
 
 

@@ -74,3 +74,72 @@ async def test_on_trino_a_files_sources_tables_come_from_the_engine(server):
     )
     assert listed is None  # the engine's own file catalog lists them
     assert server == []
+
+
+def _bundle_not_staged():
+    from pathlib import Path
+
+    from provisa.runtime_deps.pgwire_bundles import BundleNotStaged, bundle_spec_for
+
+    spec = bundle_spec_for("files")
+    return BundleNotStaged(spec, Path("/nowhere") / spec.version / spec.artifact_name)
+
+
+@pytest.fixture
+def unstaged_bundle_on_duckdb(monkeypatch):
+    """A files source on DuckDB whose pinned pgwire-file bundle is not staged: every read of its
+    server -- the listing on the request, and the engine's own attach -- is refused by name."""
+    from provisa.api import app as app_module
+    from provisa.api.admin import schema_query
+    from provisa.federation.engine import build_duckdb_engine
+
+    async def _source(source_id):
+        return SimpleNamespace(id=source_id, type="files")
+
+    @asynccontextmanager
+    async def _bound():
+        yield
+
+    async def _refused(source, schema):
+        raise _bundle_not_staged()
+
+    class _Pool:
+        @asynccontextmanager
+        async def acquire(self):
+            yield None
+
+    async def _pool():
+        return _Pool()
+
+    def _seam_refused(src, schema):
+        raise _bundle_not_staged()
+
+    async def _no_floor(source_id, what):
+        return None
+
+    async def _src(source_id):
+        return SimpleNamespace(id=source_id, type="files")
+
+    engine = SimpleNamespace(engine=build_duckdb_engine(), introspect_tables=_seam_refused)
+    monkeypatch.setattr(introspect, "_adapter_source", _source)
+    monkeypatch.setattr(introspect, "_adapter_bound", _bound)
+    monkeypatch.setattr(pgwire_replica, "adapter_tables", _refused)
+    monkeypatch.setattr(schema_query, "_get_pool", _pool)
+    monkeypatch.setattr(schema_query, "_require_live_attach", _no_floor)
+    monkeypatch.setattr(schema_query, "_source_for_introspection", _src)
+    monkeypatch.setattr(app_module.state, "source_types", {"test3": "files"}, raising=False)
+    monkeypatch.setattr(app_module.state, "source_pools", _NO_POOL, raising=False)
+    monkeypatch.setattr(app_module.state, "federation_engine", engine, raising=False)
+
+
+async def test_a_bundle_not_staged_is_the_register_lists_answer_not_an_empty_list(
+    unstaged_bundle_on_duckdb,
+):
+    """The File Crawler's Register tables step said "This schema has no tables" when the pinned
+    pgwire-file bundle was not staged (the pin moved to engine-v0.131.1): the refusal, which names
+    the bundle and the stage command, was swallowed as a best-effort read and the list was empty."""
+    from provisa.api.admin.schema_query import offered_tables
+    from provisa.runtime_deps.pgwire_bundles import BundleNotStaged
+
+    with pytest.raises(BundleNotStaged, match="pgwire-file.*not staged.*stage_assets"):
+        await offered_tables("test3", "test3")

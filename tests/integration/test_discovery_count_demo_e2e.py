@@ -180,3 +180,45 @@ def test_the_demos_string_columns_are_registered_in_their_sources_spelling(insta
         t for (_, t), _ in spelled.items() if t.split(" ", 1)[0].split("(", 1)[0] == "varchar"
     }
     assert strings, spelled
+
+
+def test_a_registered_graphql_column_read_through_its_selection_is_read(instance: Instance):
+    """The demo's ``Schedule`` type holds ``employee``, an object of the registered ``Employee``
+    type, and no ``employee_id``; the model registers ``schedules.employee_id`` read as
+    ``employee_id: employee { id }``. The source is read from its endpoint at boot, and its
+    relation was built from the endpoint's fields alone: every read of the registered column
+    failed (``Binder Error: Values list "t" does not have a column named "employee_id"``), and a
+    discovery run over the model failed with it."""
+    rows = smoke._sql_rows(
+        instance, 'SELECT "id", "employee_id" FROM "shelter"."schedules" ORDER BY "id" LIMIT 3'
+    )
+    assert [r["employee_id"] for r in rows] == [1, 1, 1], rows
+
+
+def _finished_run(inst: Instance, scope: dict) -> dict:
+    resp = httpx.post(
+        f"{inst.url}/admin/discover/runs",
+        json={**_SETTINGS, **scope},
+        headers=_HEADERS,
+        timeout=60,
+    )
+    assert resp.status_code == 200, f"{resp.status_code} {resp.text}\n{_log(inst)}"
+    run_id = resp.json()["run"]["id"]
+    deadline = time.monotonic() + 600
+    while True:
+        run = httpx.get(
+            f"{inst.url}/admin/discover/runs/{run_id}", headers=_HEADERS, timeout=60
+        ).json()["run"]
+        if run["status"] != "running":
+            return run
+        assert time.monotonic() < deadline, f"run {run_id} still running: {run}"
+        time.sleep(2)
+
+
+def test_a_run_over_the_demos_shelter_reads_every_table_it_can(instance: Instance):
+    """A run reads each table of its sets; the shelter's GraphQL tables are read whole, so none
+    is left out, and the run ends."""
+    run = _finished_run(instance, {"kinds": ["foreign_keys"], "source_domains": ["shelter"]})
+    assert run["status"] == "done", f"{run}\n{_log(instance)}"
+    assert run["report"]["tables_unread"] == [], run["report"]
+    assert run["report"]["source_tables"] > 0

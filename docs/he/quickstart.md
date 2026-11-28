@@ -23,7 +23,7 @@ cd provisa
 ./setup.sh
 ```
 
-`setup.sh` יוצר את `.venv/`, מתקין את כל תלויות ה-Python דרך `pip install -e ".[dev]"`, ומגדיר git hooks לתוך `.githooks/`.
+`setup.sh` בודק את uv, Rust, Node.js, Go ו-Docker מול הגרסאות שה-dev container מקבע (`.devcontainer/devcontainer.json`), ומציע להתקין כל כלי שחסר או ישן מדי (`./setup.sh --yes` מתקין בלי לשאול; Docker אופציונלי ונדרש רק לבדיקות קונטיינרים ולערימות ההדגמה). לאחר מכן הוא מסנכרן את תלויות ה-Python הננעלות אל `.venv/` (כולל בניית מקודדי ה-Rust), מריץ `npm ci` ב-`provisa-ui`, ומגדיר git hooks לתוך `.githooks/`. אפשר להריץ אותו שוב בבטחה.
 
 ---
 

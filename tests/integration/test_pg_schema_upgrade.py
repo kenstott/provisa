@@ -422,10 +422,12 @@ _CREATE_ONLY = {
         "cost_usd created_at"
     ),
     "code_source_vectors": "source_id item_id vector text item_metadata",
+    "column_rules": "id tag_id classification role_id action mask tenant_id",
     "config_stamp": "kind stamp",
     "connectors": (
         'name git ref "commit" path build_command language image digest code_hash arch requires'
     ),
+    "contract_type_checks": "table_id checked_at outcome failing",
     "creation_requests": (
         "id request_type capability payload requested_by status rejection_reason resolved_by "
         "created_at resolved_at"

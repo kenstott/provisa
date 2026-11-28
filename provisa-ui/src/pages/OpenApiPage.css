@@ -1,9 +1,6 @@
-.openapi-page {
-  display: flex;
+/* REQ-2277: the page is an Explore shell; the API reader fills its body edge to edge. */
+.openapi-page .explore-shell__body {
   flex-direction: column;
-  height: calc(100vh - var(--navbar-height, 56px) - var(--subnav-height, 36px));
-  overflow: hidden;
-  padding: 0;
 }
 
 .openapi-frame {

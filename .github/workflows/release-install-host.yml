@@ -4,8 +4,9 @@
 # (nightly-main.yml starts build-dmg.yml there; release-ready.yml counts that run). On a fresh
 # Ubuntu runner -- Docker and systemd, nothing of Provisa's -- scripts/install-host.sh runs as a
 # user runs it, under sudo, on this run's own release assets: the provisa wheel, provisa_notebook,
-# provisa_duckdb_ext and the Trino plugin tarball, the four files it takes from a release. It ends
-# with its own health check (Provisa a systemd service, Trino its federation engine). The smoke
+# provisa_duckdb_ext, the Trino plugin tarball and the amd64 core images (Zaychik), the files it
+# takes from a release. It ends with its own health check (Provisa a systemd service, Trino its
+# federation engine, PostgreSQL, MinIO and Zaychik healthy beside it). The smoke
 # checks (tests/smoke/test_main_is_startable.py) then run against that installed host: one known
 # query through each front door, a read from each default source, a restricted role getting less.
 #
@@ -65,19 +66,19 @@ jobs:
         if: inputs.run_id == ''
         uses: actions/download-artifact@v4
         with:
-          pattern: "{provisa-wheel-linux-x86_64-dist,provisa-notebook-dist,provisa-duckdb-ext-wheels,trino-plugins}"
+          pattern: "{provisa-wheel-linux-x86_64-dist,provisa-notebook-dist,provisa-duckdb-ext-wheels,trino-plugins,core-images-amd64-tarball}"
           path: artifacts/
 
       - name: The release assets (run ${{ inputs.run_id }})
         if: inputs.run_id != ''
         uses: actions/download-artifact@v4
         with:
-          pattern: "{provisa-wheel-linux-x86_64-dist,provisa-notebook-dist,provisa-duckdb-ext-wheels,trino-plugins}"
+          pattern: "{provisa-wheel-linux-x86_64-dist,provisa-notebook-dist,provisa-duckdb-ext-wheels,trino-plugins,core-images-amd64-tarball}"
           path: artifacts/
           run-id: ${{ inputs.run_id }}
           github-token: ${{ github.token }}
 
-      # The four files as a release carries them, named as install-host.sh selects them. The
+      # The files as a release carries them, named as install-host.sh selects them. The
       # plugin tarball is packed as release-prebuilt.yml's package-plugins packs it.
       - name: Lay the assets out as a release
         env:
@@ -89,6 +90,9 @@ jobs:
           cp artifacts/provisa-notebook-dist/provisa_notebook-*.whl assets/
           cp artifacts/provisa-duckdb-ext-wheels/provisa_duckdb_ext-*.whl assets/
           tar -czf "assets/provisa-trino-plugins-${VERSION}.tar.gz" -C artifacts/trino-plugins/ .
+          # The amd64 core images (release-prebuilt.yml's package-core-images-amd64): Zaychik is
+          # loaded from it, as a published release's image is pulled from GHCR.
+          cp "artifacts/core-images-amd64-tarball/provisa-core-images-amd64-${VERSION}.zip" assets/
           ls -l assets/
 
       - name: Install with install-host.sh
@@ -138,6 +142,9 @@ jobs:
           mkdir -p smoke-logs
           sudo journalctl -u provisa --no-pager > smoke-logs/provisa-service.log
           sudo docker logs provisa-trino > smoke-logs/trino.log 2>&1
+          for c in postgres minio zaychik; do
+            sudo docker logs "provisa-$c" > "smoke-logs/$c.log" 2>&1
+          done
           sudo chown -R "$(id -u):$(id -g)" smoke-logs
 
       - name: Upload the logs

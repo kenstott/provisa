@@ -682,6 +682,8 @@ def test_a_workers_sandbox_gets_the_port_of_the_setting_and_a_reader_never(monke
 
     monkeypatch.setattr(sandbox.platform, "system", lambda: "Linux")
     monkeypatch.setattr(sandbox, "launcher_argv", linux)
+    # /py is no runtime: on a Nix host the store grant would read its ELF header (none here).
+    monkeypatch.setattr(sandbox, "nix_store_grant", lambda _exe, _read, _env: [])
     monkeypatch.setattr(
         sandbox, "egress_proxy", lambda _allow: SimpleNamespace(port=1111, environment=dict)
     )
@@ -725,6 +727,8 @@ def test_a_python_workers_sandbox_opens_the_flight_block_and_never_the_main_flig
 
     monkeypatch.setattr(sandbox.platform, "system", lambda: "Linux")
     monkeypatch.setattr(sandbox, "launcher_argv", linux)
+    # /py is no runtime: on a Nix host the store grant would read its ELF header (none here).
+    monkeypatch.setattr(sandbox, "nix_store_grant", lambda _exe, _read, _env: [])
     monkeypatch.setattr(
         sandbox, "egress_proxy", lambda _allow: SimpleNamespace(port=1111, environment=dict)
     )

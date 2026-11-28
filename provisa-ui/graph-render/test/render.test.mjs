@@ -21,6 +21,11 @@ const RENDER = fileURLToPath(new URL("../dist/render.mjs", import.meta.url));
 // The renderer built as `npm run build` builds it, but with an elkjs whose every answer is a
 // failure (test/elk-fails.mjs): the ELK layout's failure, which no request can cause on its own.
 const RENDER_ELK_FAILS = fileURLToPath(new URL("../dist/render-elk-fails.mjs", import.meta.url));
+// The renderer built with a node-canvas whose native addon does not load (test/canvas-fails.mjs),
+// as on a host missing one of its shared libraries.
+const RENDER_CANVAS_FAILS = fileURLToPath(
+  new URL("../dist/render-canvas-fails.mjs", import.meta.url),
+);
 const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -75,6 +80,28 @@ before(async () => {
         setup(b) {
           b.onResolve({ filter: /^elkjs(\/|$)/ }, () => ({
             path: fileURLToPath(new URL("./elk-fails.mjs", import.meta.url)),
+          }));
+        },
+      },
+    ],
+    logLevel: "silent",
+  });
+  await build({
+    absWorkingDir: PACKAGE,
+    entryPoints: ["src/main.ts"],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    outfile: RENDER_CANVAS_FAILS,
+    external: ["jsdom"],
+    alias: { elkjs: "./node_modules/elkjs" },
+    plugins: [
+      {
+        name: "canvas-fails",
+        setup(b) {
+          b.onResolve({ filter: /^canvas$/ }, () => ({
+            path: fileURLToPath(new URL("./canvas-fails.mjs", import.meta.url)),
           }));
         },
       },
@@ -147,4 +174,17 @@ test("an ELK layout that fails ends the drawing with ELK's error, not a PNG or a
     out.stderr.toString(),
     /the elk layout failed: UnsupportedGraphException: held to fail by the test/,
   );
+});
+
+test("a node-canvas that does not load is reported with the loader's own error", () => {
+  // jsdom loads canvas inside a try and says only "without installing the canvas npm package"
+  // (the NixOS run 45720472876): the renderer loads it first, so the loader's reason is the one
+  // render_graph reports.
+  const out = render(
+    { elements, layout: "force", theme: "light", width: 800, height: 600 },
+    RENDER_CANVAS_FAILS,
+  );
+  assert.notEqual(out.status, 0);
+  assert.equal(out.stdout.length, 0);
+  assert.match(out.stderr.toString(), /libheld\.so\.1: cannot open shared object file/);
 });

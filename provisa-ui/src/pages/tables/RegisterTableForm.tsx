@@ -28,7 +28,8 @@ import { WikidataRegisterForm } from "./WikidataRegisterForm";
 import { sparqlColumnsNow, useSparqlColumns } from "./useSparqlColumns";
 import { sourceBrand } from "../sources/sourceHelpers";
 import { WIKIDATA } from "../sources/wikidata";
-import { isPipelineArgument, NATIVE_QUERY_MODES, previewedColumn } from "./queryTables";
+import { isPipelineArgument, NATIVE_QUERY_MODES, previewedColumns } from "./queryTables";
+import { useSuggestColumnAliases } from "../../hooks/useNameSuggestions";
 import { QDRANT, QDRANT_SCHEMA, searchQueryArgument } from "../sources/qdrant";
 import { QdrantVectorsNote } from "./QdrantVectorsNote";
 import { RegisterColumnsField } from "./RegisterColumnsField";
@@ -170,6 +171,8 @@ export function RegisterTableForm({
   const [tableAlias, setTableAlias] = useState("");
   const [tableDescription, setTableDescription] = useState("");
   const [columns, setColumns] = useState<ColumnForm[]>([]);
+  // REQ-2361: each previewed column's alias is the naming authority's suggestion.
+  const suggestColumnAliases = useSuggestColumnAliases();
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
   // REQ-1907 (#208): the table's own Cache TTL, asked for when the table will be a replica and
   // its source states none -- without one the registration is refused. A checker's scan interval.
@@ -240,13 +243,19 @@ export function RegisterTableForm({
   useEffect(() => {
     if (sparqlColumns.state !== "read") return;
     const roleIds = roles.map((r) => r.id);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the columns follow the query's SELECT once it is read
-    setColumns(
-      sparqlColumns.columns.map((c) =>
-        previewedColumn({ name: c.name, dataType: c.data_type }, roleIds),
-      ),
-    );
-  }, [sparqlColumns, roles]);
+    let live = true;
+    // The columns follow the query's SELECT once it is read, with the server's alias suggestions.
+    previewedColumns(
+      sparqlColumns.columns.map((c) => ({ name: c.name, dataType: c.data_type })),
+      roleIds,
+      suggestColumnAliases,
+    )
+      .then((cols) => live && setColumns(cols))
+      .catch((e: unknown) => live && setPreviewProblem(e instanceof Error ? e.message : String(e)));
+    return () => {
+      live = false;
+    };
+  }, [sparqlColumns, roles, suggestColumnAliases]);
   // REQ-1670/REQ-1683: a query-API source has no tables to list — its table IS a query projection.
   // REQ-1980/REQ-1982: a document source's table is a collection or container, or a native query.
   // REQ-1983: a Qdrant table is a collection, or a search. REQ-2017: an Elasticsearch table is an
@@ -302,6 +311,7 @@ export function RegisterTableForm({
     loading: loadingTables,
     starting: startingTables,
     startingTimedOut: startingTablesTimedOut,
+    error: tablesRefusal,
   } = useAvailableTables(listsTables && listedSchema ? sourceId : null, listedSchema || null);
 
   useEffect(() => {
@@ -461,9 +471,16 @@ export function RegisterTableForm({
         setColumns(pipelineArgs); // a pipeline's arguments are kept
         return;
       }
-      setPreviewRows(res.rows);
       const roleIds = roles.map((r) => r.id);
-      setColumns([...pipelineArgs, ...res.columns.map((c) => previewedColumn(c, roleIds))]);
+      try {
+        // The rows and the columns they type are shown together, once the server suggested the
+        // columns' aliases.
+        const previewed = await previewedColumns(res.columns, roleIds, suggestColumnAliases);
+        setPreviewRows(res.rows);
+        setColumns([...pipelineArgs, ...previewed]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setPreviewing(false);
     }
@@ -513,8 +530,13 @@ export function RegisterTableForm({
     if (isSparql && cypher.trim()) {
       try {
         const roleIds = roles.map((r) => r.id);
-        formColumns = (await sparqlColumnsNow(cypher, sparqlColumns)).map((c) =>
-          previewedColumn({ name: c.name, dataType: c.data_type }, roleIds),
+        formColumns = await previewedColumns(
+          (await sparqlColumnsNow(cypher, sparqlColumns)).map((c) => ({
+            name: c.name,
+            dataType: c.data_type,
+          })),
+          roleIds,
+          suggestColumnAliases,
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -717,17 +739,21 @@ export function RegisterTableForm({
   // disabled meanwhile closed its open list under the person picking.
   const listing = !listedSchema || (loadingTables && availableTables.length === 0);
   // What the Tables field's hint says: still listing, or that there is nothing to pick.
-  const tablesStatus = startingTablesTimedOut
-    ? t("registerTableForm.tableStartingTimedOut")
-    : startingTables
-      ? t("registerTableForm.tableStarting")
-      : listing
-        ? t("registerManyTables.listing")
-        : availableTables.length === 0
-          ? t("registerManyTables.noTables")
-          : choices.length === 0
-            ? t("registerTableForm.tableAllRegistered")
-            : undefined;
+  // A listing refused says why on the field (a connector bundle not staged names the bundle and
+  // the stage command): an empty list then is no answer, so "no tables" is not said.
+  const tablesStatus = tablesRefusal
+    ? undefined
+    : startingTablesTimedOut
+      ? t("registerTableForm.tableStartingTimedOut")
+      : startingTables
+        ? t("registerTableForm.tableStarting")
+        : listing
+          ? t("registerManyTables.listing")
+          : availableTables.length === 0
+            ? t("registerManyTables.noTables")
+            : choices.length === 0
+              ? t("registerTableForm.tableAllRegistered")
+              : undefined;
   const isCdcSource = CDC_TYPES.has(sourceType);
 
   const registerProducts = async () => {
@@ -889,6 +915,7 @@ export function RegisterTableForm({
                 placeholder={t("registerManyTables.pickTables")}
                 disabled={listing || choices.length === 0}
                 loading={listing || (startingTables && !startingTablesTimedOut)}
+                error={tablesRefusal ?? undefined}
               />
             </FormField>
           )}

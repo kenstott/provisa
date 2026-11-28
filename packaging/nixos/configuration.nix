@@ -1,10 +1,11 @@
-# A NixOS host that runs Provisa's native tier from a source checkout and runs its test suites.
+# The NixOS workflow's CI host: Provisa's native tier from a source checkout, and its test suites.
+# For CI only; a user's host imports the root flake's nixosModules.provisa (module.nix).
 #
 # The checkout lives at /home/provisa/provisa and its environment is the repo's own `uv sync` venv,
 # exactly as on every other Linux host. What NixOS changes is that nothing prebuilt finds a loader
 # or a library at an FHS path, so the interpreter uv downloads, the wheels' native modules, the
 # embedded PostgreSQL and Playwright's Chromium all load through nix-ld.
-{ pkgs, lib, ... }:
+{ config, pkgs, lib, ... }:
 let
   repo = "/home/provisa/provisa";
   nixLd = "/run/current-system/sw/share/nix-ld/lib";
@@ -58,7 +59,25 @@ in
     # REQ-2194: `uv sync` compiles provisa._encoders (rust/encoders) into provisa.
     cargo
     rustc
+    # REQ-1992: tests/integration/test_org_folder_crypt.py mounts an org's encrypted folder with
+    # gocryptfs over FUSE, as a node does (scripts/ci/lanes/suite-prepare.sh installs the same two
+    # on the Ubuntu runners). NixOS's fuse module provides the setuid fusermount3 wrapper.
+    gocryptfs
+    fuse3
   ];
+
+  # The suites start tools by the paths every other distro has them at: `/bin/bash`, or `bash`,
+  # `git` and `cc` with PATH=/usr/bin:/bin (run 45680556710: 160 unit tests, FileNotFoundError).
+  # envfs serves /usr/bin and /bin from the caller's PATH, and past it from this system's profile.
+  # The CI host's choice only; preinstall.nix, what a user's host is given, does not take it.
+  services.envfs = {
+    enable = true;
+    extraFallbackPathCommands = ''
+      for f in ${config.system.path}/bin/*; do
+        [ -e "$out/$(basename "$f")" ] || ln -s "$f" "$out/"
+      done
+    '';
+  };
 
   # Registers "ODBC Driver 18 for SQL Server" in /etc/odbcinst.ini.
   environment.unixODBCDrivers = [ pkgs.unixodbcDrivers.msodbcsql18 ];
@@ -73,6 +92,15 @@ in
   networking.firewall.allowedTCPPorts = [
     3000
     8000
+  ];
+  # A test's server listens on the host for a container to dial: a code source's sidecar bound at
+  # the default bridge's gateway, read by Trino from its compose network. Ubuntu runners have no
+  # host firewall; NixOS's dropped those connections (run 45903556292,
+  # test_code_source_sidecar_trino.py: "The connection attempt failed."). Docker's own bridges
+  # are trusted; every other interface keeps the firewall.
+  networking.firewall.trustedInterfaces = [
+    "docker0"
+    "br-+"
   ];
 
   # The native tier, started the way a user starts it: `provisa run`. The unit is skipped until the
@@ -94,6 +122,8 @@ in
       # An adapter server's Python starts its JVM through JPype, which finds libjvm.so by
       # JAVA_HOME or in /usr/lib/jvm, not in the JRE its own bundle ships.
       JAVA_HOME = pkgs.jdk21.home;
+      # REQ-1296: the bootstrap org id is 'root'.
+      ORG_ID = "root";
     };
     serviceConfig = {
       User = "provisa";

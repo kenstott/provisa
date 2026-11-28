@@ -72,6 +72,7 @@ from provisa.api.admin.types import (
     AvailableTableType,
     CompanionImportSetType,
     ImportSetType,
+    ReverseAliasSuggestionType,
     InstanceApiType,
     CacheStatsType,
     CacheTableStatType,
@@ -1650,9 +1651,11 @@ class Query:  # REQ-021, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as config_conn, _bound_to_request_org():
-            path = await source_files_path(config_conn, source_id)
+            path, storage_options = await source_files_path(config_conn, source_id)
         # A glob that cannot be read, or picked tables no glob covers, is the query's error.
-        out = await asyncio.to_thread(file_glob_preview, path, glob or None, tables)
+        out = await asyncio.to_thread(
+            file_glob_preview, path, glob or None, tables, storage_options
+        )
         return FileGlobPreviewType(
             glob=out["glob"],
             files=[CombinedFileType(**f) for f in out["files"]],
@@ -1674,18 +1677,38 @@ class Query:  # REQ-021, REQ-042
         simple_links: bool = True,
         same_domain: bool = True,
         exclude_pattern: Optional[str] = None,
-    ) -> CrawlResultType:  # REQ-1785
+        database: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        mapping_json: Optional[str] = None,
+    ) -> CrawlResultType:  # REQ-1785, REQ-2280
         """Preview a file-connector crawl before a source is created/registered.
 
         Wraps ``provisa.file_source.crawler.crawl_directory``. The three HTTP-only
         settings (``simple_links``, ``same_domain``, ``exclude_pattern``) are ignored
         for local/S3/FTP/SFTP roots. Replaces the REST-only ``POST /admin/sources/crawl``
         endpoint (crawl_router.py), which has no frontend consumer, for GraphQL-schema
-        consistency with every other admin operation.
+        consistency with every other admin operation. A onedrive:// or gdrive:// path signs in
+        with the source's fields as the source will hold them (``database``, ``username``,
+        ``password``, ``mapping_json``; secrets as typed or vault references), REQ-2280.
         """
         require_capability(info, "source_registration")
+        import json as _json
+
+        from provisa.file_source.cloud_drive import drive_storage_options
         from provisa.file_source.crawler import crawl_directory
 
+        async with _bound_to_request_org():
+            storage_options = drive_storage_options(
+                {
+                    "id": "crawl preview",
+                    "path": path,
+                    "database": database,
+                    "username": username,
+                    "password": password,
+                    "mapping": _json.loads(mapping_json or "{}"),
+                }
+            )
         discovered = crawl_directory(
             path,
             depth,
@@ -1694,6 +1717,7 @@ class Query:  # REQ-021, REQ-042
             simple_links=simple_links,
             same_domain=same_domain,
             exclude_pattern=exclude_pattern,
+            storage_options=storage_options,
         )
         total_tables = sum(len(entry["tables"]) for entry in discovered)
         return CrawlResultType(
@@ -1951,58 +1975,75 @@ class Query:  # REQ-021, REQ-042
     async def suggest_table_alias(
         self, info: StrawberryInfo, table_name: str, domain_id: str, source_id: str
     ) -> str:
-        """Return the alias to use when registering table_name in domain_id from source_id.
+        """The alias to use when registering ``table_name`` in ``domain_id`` from ``source_id``:
+        the naming authority's suggestion (REQ-2361, REQ-194: naming.suggest_table_alias), asked
+        with the names other sources' tables already hold in the domain.
 
-        Returns a plain snake_case alias when no conflict exists, or a source-prefixed
-        alias (e.g. sqlite_b_orders) when the effective name already exists in the domain
-        from a different source.
+        REQ-1831: the alias is a SQL-plane identifier, so the acting org's SQL convention names it
+        (as register_table's own auto-gen does), never a source's GraphQL convention.
         """
         require_capability(info, "table_registration")
-        from provisa.compiler.naming import apply_convention, source_to_catalog
+        from provisa.compiler import naming
 
         pool = await _get_pool()
-        # The source's catalog name, not its id: a hyphen is no SQL identifier character.
-        source = source_to_catalog(source_id)
-
-        def _conflict_stmt(name: str):
-            return (
-                select(registered_tables.c.id)
-                .where(
-                    registered_tables.c.domain_id == domain_id,
-                    func.coalesce(registered_tables.c.alias, registered_tables.c.table_name)
-                    == name,
-                    registered_tables.c.source_id != source_id,
-                )
-                .limit(1)
-            )
-
+        held = select(
+            func.coalesce(registered_tables.c.alias, registered_tables.c.table_name)
+        ).where(
+            registered_tables.c.domain_id == domain_id,
+            registered_tables.c.source_id != source_id,
+        )
         async with pool.acquire() as conn:
-            # REQ-1831: this docstring has always promised "a plain snake_case alias", but this
-            # read used to fetch the SOURCE's gql_naming_convention (default "apollo_graphql",
-            # a camelCase convention) — the exact GraphQL-vs-SQL-plane mixup register_table's own
-            # auto-gen deliberately avoids (see its comment: "deriving the alias from a source's
-            # gql_naming_convention put camelCase into the SQL plane, e.g. dim_pet -> dimPet").
-            # The alias is a SQL-plane identifier; the acting org's SQL convention is its authority,
-            # matching register_table exactly, not a per-source GraphQL setting.
-            from provisa.compiler.naming import active_sql_convention
+            taken = {row[0] for row in (await conn.execute_core(held)).fetchall()}
+        return naming.suggest_table_alias(
+            table_name, source_id, taken.__contains__, naming.active_sql_convention()
+        )
 
-            convention = active_sql_convention()
-            candidate: str = apply_convention(table_name, convention)
-            conflict = (await conn.execute_core(_conflict_stmt(candidate))).fetchone()
-            if not conflict:
-                return candidate
-            # Prefix with the source to disambiguate
-            prefixed: str = apply_convention(f"{source}_{table_name}", convention)
-            conflict2 = (await conn.execute_core(_conflict_stmt(prefixed))).fetchone()
-            if not conflict2:
-                return prefixed
-            # Last resort: add numeric suffix
-            for i in range(1, 100):
-                suffixed: str = apply_convention(f"{source}_{table_name}_{i}", convention)
-                taken = (await conn.execute_core(_conflict_stmt(suffixed))).fetchone()
-                if not taken:
-                    return suffixed
-            return prefixed
+    # REQ-2361, REQ-194 (NAME SUGGESTIONS COME FROM THE AUTHORITY): every name suggested before an
+    # object is saved is the naming authority's, under the acting org's convention.
+
+    @strawberry.field
+    def suggest_reverse_rel_alias(
+        self,
+        info: StrawberryInfo,
+        graphql_alias: Optional[str] = None,
+        cypher_alias: Optional[str] = None,
+    ) -> ReverseAliasSuggestionType:
+        """The GraphQL and Cypher aliases suggested for the reverse of a relationship with these
+        aliases, the GraphQL one under the org's GraphQL convention."""
+        require_capability(info, "create_relationship")
+        from provisa.compiler import naming
+
+        gql, cql = naming.suggest_reverse_rel_alias(
+            graphql_alias, cypher_alias, naming.active_gql_convention()
+        )
+        return ReverseAliasSuggestionType(graphql_alias=gql, cypher_alias=cql)
+
+    @strawberry.field
+    def suggest_column_aliases(
+        self, info: StrawberryInfo, columns: list[str]
+    ) -> list[Optional[str]]:
+        """The alias suggested for each newly registered column, in order: None where the column
+        is already named so (naming.suggest_column_alias)."""
+        require_capability(info, "table_registration")
+        from provisa.compiler import naming
+
+        return [naming.suggest_column_alias(c) for c in columns]
+
+    @strawberry.field
+    def suggest_metric_name(self, info: StrawberryInfo, fact: str, column: str, agg: str) -> str:
+        """The governed metric name proposed for an aggregate of a fact's measure."""
+        require_capability(info, "table_registration")
+        from provisa.compiler import naming
+
+        return naming.suggest_metric_name(fact, column, agg)
+
+    @strawberry.field
+    def suggest_junction_name(self, info: StrawberryInfo, left_table: str, right_table: str) -> str:
+        """The junction table name proposed for linking two tables."""
+        require_capability(info, "table_registration")
+        from provisa.compiler import naming
+
+        return naming.suggest_junction_name(left_table, right_table)
 
     # ── Admin: Materialized Views ──
 

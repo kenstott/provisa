@@ -30,7 +30,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "kaggle",
@@ -50,7 +51,8 @@
       "fields": [],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "postgresql",
@@ -94,7 +96,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "mysql",
@@ -138,7 +141,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "singlestore",
@@ -182,7 +186,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "mariadb",
@@ -226,7 +231,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "sqlserver",
@@ -277,7 +283,8 @@
       "mapping_json": [],
       "federation_hints": [
         "trust_server_certificate"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "oracle",
@@ -321,7 +328,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "duckdb",
@@ -400,7 +408,8 @@
         "gcs_secret_key",
         "azure_account_name",
         "azure_account_key"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "exasol",
@@ -451,7 +460,8 @@
       "mapping_json": [],
       "federation_hints": [
         "tls_fingerprint"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "saphana",
@@ -495,7 +505,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "cockroachdb",
@@ -539,7 +550,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "yugabytedb",
@@ -583,7 +595,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "greenplum",
@@ -627,7 +640,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "tidb",
@@ -671,7 +685,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "firebird",
@@ -721,7 +736,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "hiveserver2",
@@ -778,7 +794,8 @@
       "mapping_json": [],
       "federation_hints": [
         "auth_mechanism"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "jdbc",
@@ -842,7 +859,8 @@
         "jdbc_driver_jar",
         "jdbc_driver_class",
         "capabilities.<engine>"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "snowflake",
@@ -902,7 +920,8 @@
         "warehouse",
         "schema",
         "role"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "bigquery",
@@ -937,7 +956,8 @@
       "mapping_json": [],
       "federation_hints": [
         "credentials_path"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "athena",
@@ -1001,7 +1021,8 @@
         "catalog",
         "s3_staging_dir",
         "role_arn"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "databricks",
@@ -1054,7 +1075,8 @@
       "federation_hints": [
         "http_path",
         "reach"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "redshift",
@@ -1098,7 +1120,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "fabric",
@@ -1153,7 +1176,8 @@
         "tenant_id",
         "client_id",
         "client_secret"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "synapse",
@@ -1208,7 +1232,8 @@
         "tenant_id",
         "client_id",
         "client_secret"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "motherduck",
@@ -1240,7 +1265,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "clickhouse",
@@ -1284,7 +1310,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "elasticsearch",
@@ -1323,7 +1350,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "pinot",
@@ -1353,7 +1381,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "druid",
@@ -1392,7 +1421,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "trino",
@@ -1436,7 +1466,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "delta_lake",
@@ -1494,7 +1525,8 @@
         "secret_access_key",
         "region",
         "endpoint"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "iceberg",
@@ -1637,7 +1669,8 @@
         "iceberg_catalog_user",
         "iceberg_catalog_password",
         "iceberg_catalog_role"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "hive",
@@ -1732,7 +1765,8 @@
         "sas_token",
         "credentials_json"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "hive_s3",
@@ -1796,7 +1830,8 @@
         "region",
         "endpoint"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "mongodb",
@@ -1840,7 +1875,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "cosmosdb",
@@ -1905,7 +1941,8 @@
         "auth",
         "tenant_id",
         "client_id"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "qdrant",
@@ -1944,7 +1981,8 @@
       "mapping_json": [],
       "federation_hints": [
         "prefer_grpc"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "cassandra",
@@ -1988,7 +2026,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "redis",
@@ -2032,7 +2071,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "node",
@@ -2137,7 +2177,8 @@
         "content_hash",
         "connector"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "python",
@@ -2246,7 +2287,8 @@
         "content_hash",
         "connector"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "go",
@@ -2355,7 +2397,8 @@
         "content_hash",
         "connector"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "rust",
@@ -2464,7 +2507,8 @@
         "content_hash",
         "connector"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "spark",
@@ -2513,7 +2557,8 @@
         "settings.cluster",
         "secrets"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "neo4j",
@@ -2556,7 +2601,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "sparql",
@@ -2626,7 +2672,8 @@
       ],
       "federation_hints": [
         "default_graph_uri"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "sqlite",
@@ -2704,7 +2751,8 @@
         "gcs_secret_key",
         "azure_account_name",
         "azure_account_key"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "csv",
@@ -2786,7 +2834,8 @@
         "gcs_secret_key",
         "azure_account_name",
         "azure_account_key"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "parquet",
@@ -2868,7 +2917,8 @@
         "gcs_secret_key",
         "azure_account_name",
         "azure_account_key"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "files",
@@ -2889,18 +2939,51 @@
           "name": "path",
           "at": "input",
           "required": true,
-          "note": "a directory or glob, or an ftp/sftp/s3/https/sharepoint:// address"
+          "note": "a directory or glob, or an ftp/sftp/s3/https/sharepoint/onedrive/gdrive:// address"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true,
+          "when": "path=onedrive",
+          "note": "the tenant id"
         },
         {
           "name": "username",
           "at": "input",
-          "when": "path=ftp|sftp|http|https|sharepoint"
+          "when": "path=ftp|sftp|http|https|sharepoint|onedrive|gdrive",
+          "note": "the client id for onedrive:// and for gdrive:// with gdrive_auth=oauth"
         },
         {
           "name": "password",
           "at": "input",
           "secret": true,
-          "when": "path=ftp|sftp|http|https|sharepoint"
+          "when": "path=ftp|sftp|http|https|sharepoint|onedrive|gdrive",
+          "note": "the client secret; for gdrive:// with gdrive_auth=service_account, the key"
+        },
+        {
+          "name": "gdrive_auth",
+          "at": "mappingJson",
+          "required": true,
+          "when": "path=gdrive",
+          "default": "service_account",
+          "choices": [
+            "service_account",
+            "oauth"
+          ]
+        },
+        {
+          "name": "refresh_token",
+          "at": "mappingJson",
+          "required": true,
+          "secret": true,
+          "when": "gdrive_auth=oauth"
+        },
+        {
+          "name": "gdrive_subject",
+          "at": "mappingJson",
+          "when": "gdrive_auth=service_account",
+          "note": "the Workspace user the service account acts as (domain-wide delegation); none reads as the service account itself"
         },
         {
           "name": "excel_hints",
@@ -2910,9 +2993,13 @@
       ],
       "note": "",
       "mapping_json": [
+        "gdrive_auth",
+        "refresh_token",
+        "gdrive_subject",
         "excel_hints"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "logs",
@@ -2959,7 +3046,8 @@
         "pattern",
         "record_start"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "google_sheets",
@@ -2992,7 +3080,8 @@
       "mapping_json": [
         "credentials_json"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "prometheus",
@@ -3018,7 +3107,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "airport",
@@ -3048,7 +3138,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "openapi",
@@ -3109,7 +3200,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "dbt",
@@ -3195,7 +3287,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "graphql",
@@ -3256,7 +3349,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "grpc",
@@ -3327,7 +3421,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "kafka",
@@ -3398,7 +3493,8 @@
         "kafka_security_protocol",
         "kafka_sasl_mechanism",
         "kafka_ssl_ca"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "websocket",
@@ -3453,7 +3549,8 @@
         "subscribe_payload",
         "event_path",
         "reconnect_interval"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "rss",
@@ -3503,7 +3600,8 @@
         "feed_url",
         "poll_interval",
         "use_ssl"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "ingest",
@@ -3522,7 +3620,8 @@
       "fields": [],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "sharepoint",
@@ -3608,7 +3707,8 @@
         "certificate_path",
         "certificate_password"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "salesforce",
@@ -3704,7 +3804,8 @@
         "instance_url",
         "api_version"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "servicenow",
@@ -3741,7 +3842,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "jira",
@@ -3780,7 +3882,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "quickbooks",
@@ -3837,7 +3940,8 @@
         "environment",
         "refresh_token"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "cloudops",
@@ -3941,7 +4045,8 @@
         "gcp_project_ids",
         "cache_ttl_minutes"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "google_workspace",
@@ -4028,7 +4133,8 @@
         "calendar_send_updates",
         "refresh_token"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "microsoft_365",
@@ -4092,7 +4198,8 @@
         "calendar_send_updates",
         "refresh_token"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "github",
@@ -4140,7 +4247,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "gitlab",
@@ -4188,7 +4296,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "shopify",
@@ -4248,7 +4357,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "stripe",
@@ -4286,7 +4396,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "openmetadata",
@@ -4330,7 +4441,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "datahub",
@@ -4374,7 +4486,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "wikipedia",
@@ -4414,7 +4527,8 @@
       "federation_hints": [
         "brand",
         "wikipedia"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "wikidata",
@@ -4447,7 +4561,8 @@
       "mapping_json": [],
       "federation_hints": [
         "brand"
-      ]
+      ],
+      "setup_flow": true
     },
     {
       "name": "splunk",
@@ -4506,7 +4621,8 @@
         "use_token",
         "disable_ssl_validation"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": true
     },
     {
       "name": "soda",
@@ -4550,7 +4666,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": false
     },
     {
       "name": "great_expectations",
@@ -4594,7 +4711,8 @@
       ],
       "note": "",
       "mapping_json": [],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": false
     },
     {
       "name": "data_profiler",
@@ -4698,7 +4816,8 @@
         "category_max_columns",
         "classification_sample"
       ],
-      "federation_hints": []
+      "federation_hints": [],
+      "setup_flow": false
     }
   ],
   "typeAlias": {

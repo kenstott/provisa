@@ -97,7 +97,7 @@ test("fitted whole, the result graph stays whole on a narrower canvas, and again
   page,
 }) => {
   await graphDrawn(page);
-  await page.getByTestId("canvas-fit-view").click();
+  await page.getByTestId("canvas-fit-all").click();
   const wide = await graphInCanvas(page);
   expect(inView(wide)).toBe(true);
 

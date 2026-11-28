@@ -15,6 +15,7 @@ draws them with; generate_explore_queries answers the six query surfaces under t
 from __future__ import annotations
 
 import json
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -205,6 +206,27 @@ def test_render_graph_hands_the_renderer_the_graph_and_returns_its_png(renderer,
         "width": 1024,
         "height": 768,
     }
+
+
+def test_render_graph_gives_node_nix_ld_s_libraries_on_nixos(renderer, monkeypatch):
+    """On NixOS the canvas addon finds libuuid.so.1 through the library set nix-ld names."""
+    monkeypatch.setenv("NIX_LD_LIBRARY_PATH", "/run/current-system/sw/share/nix-ld/lib")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "")
+    run = MagicMock(return_value=_Done())
+    with patch("subprocess.run", run):
+        tools.render_graph(tools.cytoscape_elements([{"r": PLACED}]))
+    env = run.call_args.kwargs["env"]
+    assert env["LD_LIBRARY_PATH"] == "/run/current-system/sw/share/nix-ld/lib"
+    assert env["NIX_LD_LIBRARY_PATH"] == "/run/current-system/sw/share/nix-ld/lib"
+    assert env["PATH"] == os.environ["PATH"]
+
+
+def test_render_graph_leaves_node_s_environment_alone_off_nixos(renderer, monkeypatch):
+    monkeypatch.delenv("NIX_LD_LIBRARY_PATH", raising=False)
+    run = MagicMock(return_value=_Done())
+    with patch("subprocess.run", run):
+        tools.render_graph(tools.cytoscape_elements([{"r": PLACED}]))
+    assert run.call_args.kwargs["env"] is None
 
 
 def test_render_graph_draws_light_with_the_force_layout_unless_told(renderer):

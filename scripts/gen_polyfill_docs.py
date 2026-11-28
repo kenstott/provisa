@@ -18,6 +18,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts" / "conformance"))
+
+import polyfill_provenance  # noqa: E402
 
 from provisa.transpiler.polyfill import GRID  # noqa: E402
 from provisa.transpiler.polyfill.docs import pages  # noqa: E402
@@ -28,7 +31,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="exit 1 if a page differs")
     args = parser.parse_args()
     drifted = []
-    for relative, text in pages(GRID).items():
+    for relative, text in pages(GRID, polyfill_provenance.read(GRID)).items():
         path = ROOT / relative
         if args.check:
             if not path.exists() or path.read_text() != text:

@@ -21,6 +21,7 @@ import {
   type TableMetadata,
 } from "../../api/admin";
 import { useReadColumns } from "../../hooks/useAvailableColumnsMetadataLazy";
+import { useSuggestColumnAliases } from "../../hooks/useNameSuggestions";
 import { useRegisterTables, type TableRegistrationOutcome } from "../../hooks/useTableQueries";
 import { serverMessage } from "../../i18n/serverMessage";
 import { draftFromRegistration, type Registration } from "./draftTable";
@@ -73,6 +74,7 @@ export function blockedBy(
 export function useManyTables(choice: ManyTablesChoice) {
   const { t } = useTranslation();
   const readColumns = useReadColumns();
+  const suggestColumnAliases = useSuggestColumnAliases();
   const { registerTables } = useRegisterTables();
   const { sourceId, schemaName, offered, isRegistered } = choice;
   const [readings, setReadings] = useState<Record<string, Reading>>({});
@@ -137,7 +139,8 @@ export function useManyTables(choice: ManyTablesChoice) {
             columns: await readColumns(sourceId, schemaName, name),
             needs: null,
           };
-    const columns = discoveredColumns(read.columns, choice.roleIds, choice.sourceType);
+    const aliases = await suggestColumnAliases(read.columns.map((c) => c.name));
+    const columns = discoveredColumns(read.columns, aliases, choice.roleIds, choice.sourceType);
     const tableName = combined?.name ?? name;
     const alias = await choice.suggestTableAlias(tableName, choice.domainId, sourceId);
     const uniqueConstraints = await fetchTableUniqueConstraints(sourceId, schemaName, name);

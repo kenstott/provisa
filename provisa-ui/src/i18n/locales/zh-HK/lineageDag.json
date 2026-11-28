@@ -2,6 +2,19 @@
   "lineageDag": {
     "job": "OpenLineage 作業",
     "outsideModel": "模型以外",
-    "reportedEdge": "由 OpenLineage 回報"
+    "reportedEdge": "由 OpenLineage 回報",
+    "columns_one": "{{count}} 個欄位",
+    "columns_other": "{{count}} 個欄位",
+    "unused": "+{{count}} 個未使用",
+    "materialized": "已實體化",
+    "feedbackCycle": "處於回饋循環中",
+    "errorCycle": "處於錯誤循環中",
+    "clickToExpand": "按一下展開",
+    "clickToCollapse": "按一下摺疊",
+    "doubleClickToOpen": "按兩下開啟",
+    "expandAll": "展開所有資料集",
+    "collapseAll": "摺疊所有資料集",
+    "enlarge": "放大",
+    "stats": "{{columns}} 個欄位 · {{edges}} 條邊"
   }
 }

@@ -120,6 +120,7 @@ nav:
       - Configuration: configuration.md
       - Deployment: deployment.md
       - Install on a Linux Host: install-host.md
+      - Install with Nix: install-nixos.md
       - How to Scale: how-to-scale.md
       - Architecture Review: architecture-review.md
       - Sizing and Tuning: sizing.md
@@ -213,6 +214,7 @@ nav:
       - Features: features.md
       - Requirements: arch/requirements.md
   - Release Notes:
+      - v0.1.0-alpha.513: releases/v0.1.0-alpha.513.md
       - v0.1.0-alpha.512: releases/v0.1.0-alpha.512.md
       - v0.1.0-alpha.511: releases/v0.1.0-alpha.511.md
       - v0.1.0-alpha.510: releases/v0.1.0-alpha.510.md

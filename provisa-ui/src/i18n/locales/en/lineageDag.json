@@ -2,6 +2,19 @@
   "lineageDag": {
     "job": "OpenLineage job",
     "outsideModel": "outside the model",
-    "reportedEdge": "reported by OpenLineage"
+    "reportedEdge": "reported by OpenLineage",
+    "columns_one": "{{count}} column",
+    "columns_other": "{{count}} columns",
+    "unused": "+{{count}} unused",
+    "materialized": "materialized",
+    "feedbackCycle": "in a feedback cycle",
+    "errorCycle": "in a cycle that is an error",
+    "clickToExpand": "Click to expand",
+    "clickToCollapse": "Click to collapse",
+    "doubleClickToOpen": "double-click to open",
+    "expandAll": "Expand all datasets",
+    "collapseAll": "Collapse all datasets",
+    "enlarge": "Enlarge",
+    "stats": "{{columns}} columns · {{edges}} edges"
   }
 }

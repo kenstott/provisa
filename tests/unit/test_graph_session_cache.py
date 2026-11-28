@@ -424,3 +424,42 @@ async def test_a_clear_on_one_worker_ends_the_copy_on_the_other(workers):
     _until(lambda: _copy(one) is None)
     tables, after = await _read(one)
     assert tables == set() and after > before
+
+
+# --- shutdown ------------------------------------------------------------------------------------
+
+
+class _ListeningConnection:
+    """A listening connection that hears nothing: each wait for a notification lasts its timeout,
+    as a quiet channel's does."""
+
+    def __init__(self) -> None:
+        self.closed = False
+        self.waiting = threading.Event()
+
+    def notifies(self, timeout: float):
+        self.waiting.set()
+        time.sleep(timeout)
+        return iter(())
+
+    def execute(self, _sql: str) -> None:
+        pass
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_a_stopped_listener_has_closed_its_connection_when_stop_returns():
+    """REQ-1316: a server's shutdown closes every connection it opened. Its engines are disposed
+    there, which stops each one's listener; a stop that returned while the thread still waited on
+    the channel left the connection open after the shutdown (seen as a ``SELECT 1`` backend)."""
+    conn = _ListeningConnection()
+
+    class _Sessions(cache.Sessions):
+        def _connect(self):
+            return conn
+
+    sessions = _Sessions(engine=None)  # type: ignore[arg-type]  # _connect never reads it
+    assert conn.waiting.wait(5.0), "the listener never listened"
+    sessions.stop()
+    assert conn.closed, "the listening connection outlived its listener's stop"
