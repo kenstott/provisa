@@ -13,9 +13,9 @@
     "refused_by_name": 238
    },
    "edge": {
-    "served": 1813,
+    "served": 1793,
     "wrong_answer": 0,
-    "engine_error": 280,
+    "engine_error": 300,
     "documented_limit": 2
    }
   },
@@ -23,14 +23,14 @@
    "total": 3319,
    "base": {
     "passed": 2091,
-    "wrong_answer": 2,
+    "wrong_answer": 0,
     "engine_error": 0,
     "refused_by_name": 238
    },
    "edge": {
-    "served": 1840,
+    "served": 1820,
     "wrong_answer": 0,
-    "engine_error": 249,
+    "engine_error": 269,
     "documented_limit": 2
    }
   },
@@ -73,9 +73,9 @@
     "refused_by_name": 81
    },
    "edge": {
-    "served": 1962,
+    "served": 1946,
     "wrong_answer": 50,
-    "engine_error": 304,
+    "engine_error": 320,
     "documented_limit": 2
    }
   },
@@ -119,8 +119,8 @@
    },
    "edge": {
     "served": 633,
-    "wrong_answer": 233,
-    "engine_error": 31,
+    "wrong_answer": 235,
+    "engine_error": 29,
     "documented_limit": 0
    }
   },
@@ -149,8 +149,8 @@
    },
    "edge": {
     "served": 617,
-    "wrong_answer": 256,
-    "engine_error": 40,
+    "wrong_answer": 258,
+    "engine_error": 38,
     "documented_limit": 0
    }
   },
@@ -239,8 +239,8 @@
    },
    "edge": {
     "served": 618,
-    "wrong_answer": 256,
-    "engine_error": 42,
+    "wrong_answer": 258,
+    "engine_error": 40,
     "documented_limit": 0
    }
   },
@@ -253,9 +253,9 @@
     "refused_by_name": 397
    },
    "edge": {
-    "served": 1378,
+    "served": 1362,
     "wrong_answer": 6,
-    "engine_error": 382,
+    "engine_error": 398,
     "documented_limit": 0
    }
   },
@@ -282,8 +282,6 @@
   {"case": "clickhouse-server::bttextcmp(text, text)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"bttextcmp\"('日本語テキスト😀'::text, 'abc'::text) AS v LIMIT 1001", "edge": "text multi-byte", "said": "ERROR:  bttextcmp does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "J1388b", "since": "2026-11-22"},
   {"case": "clickhouse-server::circle_out(circle)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"circle_out\"('<(NaN,0),1>'::circle) AS v LIMIT 1001", "edge": "circle special", "said": "ERROR:  circle_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse-server::circle_send(circle)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"circle_send\"('<(NaN,0),1>'::circle) AS v LIMIT 1001", "edge": "circle special", "said": "ERROR:  circle_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
-  {"case": "clickhouse-server::dexp(double precision)", "at": "base", "kind": "wrong_answer", "statement": "SELECT pg_catalog.\"dexp\"(0.5::double precision) AS v", "said": "'1.6487212707014907', PostgreSQL '1.6487212707001282'", "job": "J1388b", "since": "2026-11-22"},
-  {"case": "clickhouse-server::dlog1(double precision)", "at": "base", "kind": "wrong_answer", "statement": "SELECT pg_catalog.\"dlog1\"(100::double precision) AS v", "said": "'4.6051701869546955', PostgreSQL '4.605170185988092'", "job": "J1388b", "since": "2026-11-22"},
   {"case": "clickhouse-server::interval_mul(interval, double precision)", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"interval_mul\"('1 day 02:03:04'::interval, '-Infinity'::double precision) AS v LIMIT 1001", "edge": "double precision special", "said": "ERROR:  interval_mul() of an infinite factor answers an infinite interval, which has no form on clickhouse", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse-server::json_to_tsvector(json, jsonb)", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"json_to_tsvector\"('\"日本語😀\"'::json, '[\"string\"]'::jsonb) AS v LIMIT 1001", "edge": "json multi-byte", "said": "ERROR:  json_to_tsvector() has no form on clickhouse", "sqlstate": "0A000", "postgres": "answers", "job": "J1388b", "since": "2026-11-22"},
   {"case": "clickhouse-server::json_to_tsvector(regconfig, json, jsonb)", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"json_to_tsvector\"('english'::regconfig, '\"日本語😀\"'::json, '[\"string\"]'::jsonb) AS v LIMIT 1001", "edge": "json multi-byte", "said": "ERROR:  json_to_tsvector() has no form on clickhouse", "sqlstate": "0A000", "postgres": "answers", "job": "J1388b", "since": "2026-11-22"},

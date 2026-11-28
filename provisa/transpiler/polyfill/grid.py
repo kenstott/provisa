@@ -90,12 +90,36 @@ def written_in(dialect: str) -> str:
     return DIALECTS[dialect].written_in
 
 
+#: The bound of a last-digits difference (REQ-2236, amended 2026-11-25): a float4 or float8 result an
+#: engine computes with its own math library differs from PostgreSQL's by at most this part of
+#: PostgreSQL's value. The widest measured is a ClickHouse server's ln(100), 2.1e-10 of it
+#: (4.6051701869546955, PostgreSQL 4.605170185988092); exp(0.5) there is 8.3e-13. Anything a single
+#: precision step or a wrong formula makes (1e-7 and more) is beyond it. A float4 has no difference
+#: this small but none, so on a float4 the bound admits none.
+LAST_DIGITS_BOUND = 1e-9
+
+
 @dataclass(frozen=True)
 class Limitation:
-    """A difference from PostgreSQL on a dialect, and the refusal a client receives for it."""
+    """A difference from PostgreSQL on a dialect, and the refusal a client receives for it.
+    ``last_digits``: the difference is a float result's last significant digits, within
+    :data:`LAST_DIGITS_BOUND`, and nothing else (``last_digits``)."""
 
     text: str
     refusal: Refusal | None = None
+    last_digits: bool = False
+
+
+def last_digits(engine: str, computed: str) -> Limitation:
+    """The limitation of a row whose float result ``engine`` computes with its own math library
+    (REQ-2236, amended 2026-11-25): a documented difference within :data:`LAST_DIGITS_BOUND`.
+    ``computed``: what it computes so, as the row's text says it."""
+    return Limitation(
+        f"{engine} computes {computed} with its own math library: a float result can differ from "
+        f"PostgreSQL's in its last significant digits, by at most {LAST_DIGITS_BOUND:g} of "
+        "PostgreSQL's value.",
+        last_digits=True,
+    )
 
 
 @dataclass(frozen=True)

@@ -21,7 +21,8 @@ its type), on the dialect of each engine, and its outcome is held to what the ro
               (or one of its limitations) states, raised with the row's message and SQLSTATE; a
               difference a limitation of the row states (one stating no error: a limitation that
               states an error excuses that error only; one naming edge values states only a wrong
-              answer at those values); or a form served within its bound, each of its edge raises
+              answer at those values; a last-digits one only a wrong answer whose every call differs
+              in float values within grid.LAST_DIGITS_BOUND, amended 2026-11-25); or a form served within its bound, each of its edge raises
               an error a limitation of its row states, its SQLSTATE and, where the limitation gives
               it, its message, or one a limitation of the grid states with its message on the
               dialect (a literal's own reading) (REQ-2236, amended 2026-11-15 and 2026-11-22)
@@ -214,14 +215,26 @@ _ANSWERS_AT = re.compile(r"Answers otherwise than PostgreSQL at an edge value: (
 
 def _differences(feature: Feature, dialect: str) -> list[Limitation]:
     """The limitations of the row on ``dialect`` that state a difference: neither a refusal nor an
-    error its form raises. A limitation stating an error excuses that error only, never a wrong
-    answer (REQ-2236; REQ-2167, amended 2026-11-23: a limitation excuses only the failure it
-    states)."""
+    error its form raises, nor a last-digits difference. A limitation stating an error excuses
+    that error only, never a wrong answer, and a last-digits one only a wrong answer in float
+    values' last digits (REQ-2236; REQ-2167, amended 2026-11-23: a limitation excuses only the
+    failure it states)."""
     return [
         lim
         for lim in feature.read.limitations.get(dialect, ())
-        if lim.refusal is None and _STATES_A_RAISE.search(lim.text) is None
+        if lim.refusal is None and not lim.last_digits and _STATES_A_RAISE.search(lim.text) is None
     ]
+
+
+def _last_digits_stated(feature: Feature, dialect: str, outcome: dict[str, Any]) -> bool:
+    """Whether the wrong answer of ``outcome`` is a last-digits difference its row states on
+    ``dialect``: every wrong call differs only in float values within the bound
+    (function_support ``last_digits``), and a limitation of the row says the engine's math library
+    makes that difference (REQ-2236, amended 2026-11-25). Within the bound on a row that states no
+    such difference, it stays a wrong answer."""
+    return bool(outcome.get("last_digits")) and any(
+        lim.last_digits for lim in feature.read.limitations.get(dialect, ())
+    )
 
 
 def _names(values: str, value: str) -> bool:
@@ -322,6 +335,8 @@ def judged(
             FAILS,
             f"a refusal the grid does not state: {sqlstate or '(no SQLSTATE)'} {message!r}",
         )
+    if kind == "wrong_answer" and _last_digits_stated(feature, dialect, outcome):
+        return HOLDS, "a last-digits float difference within the bound its row states"
     if kind == "wrong_answer" and _difference_stated(feature, dialect, outcome):
         return HOLDS, "a difference a limitation of its row states"
     if kind == "wrong_answer":

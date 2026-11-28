@@ -25,6 +25,7 @@ import pytest
 import yaml
 
 from provisa.transpiler.polyfill import GRID, Feature, Grid, Limitation, Rule, Side, column_of
+from provisa.transpiler.polyfill.grid import LAST_DIGITS_BOUND, last_digits
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "conformance"))
@@ -422,6 +423,91 @@ def test_a_limitation_stating_an_error_excuses_no_wrong_answer():
 def test_a_difference_of_no_particular_value_is_a_documented_limit():
     run = _run("shout", "text", duckdb=_WRONG, trino=_WRONG)
     assert set(check.documented_limits(run, Grid((_DIFFERS,)))) == {("shout", "text", "duckdb")}
+
+
+# --- a float's last digits (REQ-2236, amended 2026-11-25) --------------------------------------
+
+_LAST_DIGITS = Feature(
+    "lnish",
+    "toy",
+    "A natural logarithm.",
+    read=Side(
+        rules=(Rule("lnish($a::double precision)", {"duckdb": "ln($a)", "trino": "ln($a)"}),),
+        limitations={"duckdb": (last_digits("DuckDB", "lnish"),)},
+    ),
+)
+
+_LN_DIFFERENCE = "'4.6051701869546955', PostgreSQL '4.605170185988092'"
+
+
+def _wrong(*, within: bool) -> dict[str, Any]:
+    """A wrong answer, every call of it in float values' last digits (function_support), or not."""
+    outcome: dict[str, Any] = {
+        "outcome": "wrong_answer",
+        "detail": {
+            "statement": "SELECT lnish(100::double precision)",
+            "difference": _LN_DIFFERENCE,
+        },
+    }
+    if within:
+        outcome["last_digits"] = True
+    return outcome
+
+
+def test_last_digits_within_the_bound_on_a_row_stating_them_are_a_documented_difference():
+    run = _run("lnish", "double precision", duckdb=_wrong(within=True))
+    [(key, why)] = check.documented_limits(run, Grid((_LAST_DIGITS,))).items()
+    assert key == ("lnish", "double precision", "duckdb") and "last-digits" in why
+
+
+def test_last_digits_within_the_bound_on_a_row_stating_none_stay_a_wrong_answer():
+    run = _run("lnish", "double precision", trino=_wrong(within=True))
+    assert check.documented_limits(run, Grid((_LAST_DIGITS,))) == {}
+    assert _verdicts(run, Grid((_LAST_DIGITS,))) == {"trino": check.FAILS}
+
+
+def test_a_difference_beyond_the_bound_or_not_in_a_float_stays_a_wrong_answer():
+    """function_support marks no ``last_digits`` beyond the bound or outside a float value."""
+    run = _run("lnish", "double precision", duckdb=_wrong(within=False))
+    assert check.documented_limits(run, Grid((_LAST_DIGITS,))) == {}
+    assert _verdicts(run, Grid((_LAST_DIGITS,))) == {"duckdb": check.FAILS}
+
+
+def test_a_stated_last_digits_difference_excuses_no_other_failure():
+    run = _run("lnish", "double precision", duckdb=_error("boom"))
+    assert _verdicts(run, Grid((_LAST_DIGITS,))) == {"duckdb": check.FAILS}
+
+
+def test_a_last_digits_limitation_states_its_engine_and_bound():
+    [limitation] = _LAST_DIGITS.read.limitations["duckdb"]
+    assert limitation.last_digits and "DuckDB" in limitation.text
+    assert f"{LAST_DIGITS_BOUND:g}" in limitation.text
+
+
+@pytest.mark.parametrize(
+    ("function", "statement"),
+    [
+        ("exp", 'SELECT pg_catalog."exp"(0.5::double precision) AS v'),
+        ("ln", 'SELECT pg_catalog."ln"(100::double precision) AS v'),
+        ("dexp", 'SELECT pg_catalog."dexp"(0.5::double precision) AS v'),
+        ("dlog1", 'SELECT pg_catalog."dlog1"(100::double precision) AS v'),
+        ("tanh", 'SELECT pg_catalog."tanh"(0.5::double precision) AS v'),
+    ],
+)
+def test_clickhouse_s_math_library_rows_state_last_digits(function, statement):
+    """A ClickHouse server's exp and ln (and dexp and dlog1, carried as them) and tanh: the grid
+    states a last-digits difference, and a run's wrong answer within the bound is documented."""
+    outcome = {
+        "outcome": "wrong_answer",
+        "detail": {"statement": statement, "difference": _LN_DIFFERENCE},
+        "last_digits": True,
+    }
+    run = _run(function, "double precision", **{"clickhouse-server": outcome})
+    assert set(check.documented_limits(run)) == {
+        (function, "double precision", "clickhouse-server")
+    }
+    del outcome["last_digits"]
+    assert check.documented_limits(run) == {}
 
 
 def test_a_pass_and_an_error_are_no_documented_limit():
