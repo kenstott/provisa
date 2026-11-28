@@ -25,9 +25,12 @@ effective change_signal (REQ-932) inside this one place.
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.schema import CreateTable, DropTable
 
 from provisa.core.change_signal import APPEND, select_landing_shape
@@ -56,7 +59,8 @@ if TYPE_CHECKING:
 async def store_connection(dsn: str) -> AsyncGenerator[Any]:
     """A SQLAlchemy ``Connection`` (the ``StoreConn`` write face) to the relational store ``dsn``.
 
-    Built per landing (landing is on-demand, not hot) and disposed after. This is the ONE place a
+    Built per landing (landing is on-demand, not hot) and disposed after. This and
+    :func:`shared_store_connection` (the row cache's hot keyed path) are the places a
     server-relational store connection for writing is opened; the federation engine never opens one
     for writes. An embedded DuckDB store is written differently — through the engine's own connection,
     since DuckDB is single-writer per file (see ``store_connection.land_duckdb_native``, REQ-989)."""
@@ -68,6 +72,99 @@ async def store_connection(dsn: str) -> AsyncGenerator[Any]:
             yield conn
     finally:
         engine.dispose()
+
+
+# One pooled store handle per DSN for this process, for the row cache's keyed path: it reads the
+# store on every cold key read (ensure, read, re-check under the row lock, land, tombstone), and an
+# engine built and disposed per step opened a new server connection for each. Shared by every org
+# and request thread of the process (its pool is thread-safe); closed at shutdown by
+# :func:`dispose_shared_stores`.
+@dataclass
+class SharedStore:
+    """A store's pooled ``Database`` and the row-cache tables ensured through it.
+
+    ``ensured`` maps (schema, table) to the column signature the table was ensured for and its
+    ``Table`` (``query_residency._ensure_row_cache_table``). It is held with the pool so a store
+    handle closed at shutdown takes its record with it: the next process life ensures afresh."""
+
+    db: Any
+    ensured: dict[tuple[str, str], tuple[Any, Any]] = field(default_factory=dict)
+
+
+_shared: dict[str, SharedStore] = {}
+_shared_lock = threading.Lock()
+
+
+def shared_store(dsn: str) -> SharedStore:
+    """The process's pooled handle over the relational store ``dsn``, built on first use.
+
+    An embedded DuckDB store is refused: it is single-writer per file and written through the
+    engine's own connection (REQ-989); a pooled connection kept here would hold its file."""
+    from sqlalchemy import make_url
+
+    from provisa.core.database import Database, create_engine_from_url
+
+    if make_url(dsn).get_backend_name() == "duckdb":
+        raise ValueError(
+            # REQ-989: an embedded DuckDB store has one writer, the engine's own connection.
+            "a DuckDB store is written through the engine's own connection, "
+            "never through a pooled store handle"
+        )
+    with _shared_lock:
+        store = _shared.get(dsn)
+        if store is None:
+            store = SharedStore(Database(create_engine_from_url(dsn), name="materialize"))
+            _shared[dsn] = store
+        return store
+
+
+@asynccontextmanager
+async def shared_store_connection(dsn: str) -> AsyncGenerator[Any]:
+    """A connection (the ``StoreConn`` write face) checked out of :func:`shared_store`'s pool."""
+    async with shared_store(dsn).db.acquire() as conn:
+        yield conn
+
+
+def forget_ensured(schema: str, table: str) -> None:
+    """Forget the row-cache table ``schema.table`` in every pooled store handle: Provisa itself just
+    dropped, recreated or altered the table at that address (a reconcile, a replica swap or drop),
+    so the next keyed read ensures it again instead of trusting a record of the table it replaced.
+    The address is a replica address, unique to one org's store, so forgetting it in a store that
+    never held it changes nothing."""
+    with _shared_lock:
+        held = list(_shared.values())
+    for store in held:
+        store.ensured.pop((schema, table), None)
+
+
+# What a statement against a table that is not there, or lacks a column it names, raises, per
+# driver: the SQLSTATE (PostgreSQL 42P01/42703; ODBC and MySQL 42S02/42S22), MySQL's error number
+# (1146 no such table, 1054 unknown column), or SQLite's message, which carries no code.
+_MISSING_SQLSTATES = frozenset({"42P01", "42703", "42S02", "42S22"})
+_MISSING_MYSQL_ERRNOS = frozenset({1146, 1054})
+_MISSING_SQLITE_MESSAGES = ("no such table", "no such column", "has no column named")
+
+
+def missing_table_or_column(exc: DBAPIError, dialect: str) -> bool:
+    """Whether ``exc``, raised by a store of SQLAlchemy dialect ``dialect``, says the table it ran
+    against, or a column it named, does not exist."""
+    orig = exc.orig
+    if (getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)) in _MISSING_SQLSTATES:
+        return True
+    args = getattr(orig, "args", ())
+    first = args[0] if args else None
+    if first in _MISSING_SQLSTATES or first in _MISSING_MYSQL_ERRNOS:
+        return True
+    return dialect == "sqlite" and any(m in str(orig) for m in _MISSING_SQLITE_MESSAGES)
+
+
+def dispose_shared_stores() -> None:
+    """Close every pooled store handle this process opened (its shutdown)."""
+    with _shared_lock:
+        held = list(_shared.values())
+        _shared.clear()
+    for store in held:
+        store.db.engine.dispose()
 
 
 async def table_exists(store_dsn: str, *, schema: str, table: str) -> bool:
@@ -139,6 +236,7 @@ async def reconcile_table(
         have = [c["column_name"] for c in existing]
         if not have:
             await conn.execute_core(CreateTable(tbl))
+            forget_ensured(schema, table)  # a row-cache record of a table dropped since
             return "created"
         # REQ-1651: the declared key is part of the shape. A table created before its key was
         # resolved kept PRIMARY KEY-less for good (and one created under a wrong key kept the wrong
@@ -174,6 +272,7 @@ async def reconcile_table(
         else:
             await conn.execute_core(DropTable(tbl, if_exists=True))
         await conn.execute_core(CreateTable(tbl))
+        forget_ensured(schema, table)  # the row cache ensures the recreated table again
         return "recreated"
 
 

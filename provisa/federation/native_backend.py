@@ -789,6 +789,11 @@ class NativeEngineBackend(EngineBackend):
                         columns=columns,
                         pk_columns=pk_columns,
                     )
+                    if outcome != "kept":
+                        # Created or recreated at the address: the row cache ensures it again.
+                        from provisa.federation.store_writer import forget_ensured
+
+                        forget_ensured(address.schema, address.table)
                 view = None
                 if hasattr(runtime, "publish_replica_view"):
                     # A store whose catalog export shares a view of each replica (Snowflake). It

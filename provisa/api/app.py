@@ -4950,6 +4950,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
                     finally:
                         reset_current_org(_tok)
     state.federation_engine.close()
+    # REQ-1316: the row cache's pooled store handles, one per store DSN, shared by every org.
+    from provisa.federation.store_writer import dispose_shared_stores
+
+    dispose_shared_stores()
     # The tenant engine is the process's, built once by _init_control_planes and shared by every
     # org runtime's handles (REQ-1316); closing a handle above disposes it only when that handle is
     # over it. Disposed here, so no pooled connection to the control plane outlives the process's
