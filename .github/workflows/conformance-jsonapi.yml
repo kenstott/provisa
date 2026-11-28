@@ -78,11 +78,20 @@ jobs:
         with:
           extras: dev
 
+      # The resource type the cases read (scripts/conformance/jsonapi_fixture.py): a key, two
+      # attributes and rows, seeded into the PostgreSQL service and registered in the model.
+      - name: Seed the suite's fixture table
+        run: |
+          .venv/bin/python scripts/conformance/jsonapi_fixture.py seed --out "$RUNNER_TEMP/jsonapi-tables.yaml" \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
+
       # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
       # its token in CONFORMANCE_AUTHORIZATION.
       - name: Start the Provisa instance
         id: start
         uses: ./.github/actions/conformance-instance
+        with:
+          extra-tables: ${{ runner.temp }}/jsonapi-tables.yaml
 
       - name: Run the scenarios
         timeout-minutes: 20

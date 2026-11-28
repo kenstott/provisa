@@ -230,7 +230,7 @@ def _jsonapi_error(status: int) -> httpx.Response:
 def _jsonapi_server(resource_extra: dict | None = None):
     rows = [
         {
-            "type": "types_fixture",
+            "type": "jsonapi_resource",
             "id": "1",
             "attributes": {"a": 1, "b": 2},
             **(resource_extra or {}),
@@ -240,18 +240,23 @@ def _jsonapi_server(resource_extra: dict | None = None):
     def handle(request: httpx.Request) -> httpx.Response:
         path, query = request.url.path, parse_qs(request.url.query.decode())
         if path == "/data/jsonapi/openapi.json":
-            paths = {"/conformance/types_fixture": {"get": {}}, "/c/commands/x": {"get": {}}}
+            # An empty collection sorting before the fixture's: the cases read the fixture's.
+            paths = {
+                "/conformance/aaa_empty": {"get": {}},
+                "/conformance/jsonapi_resource": {"get": {}},
+                "/c/commands/x": {"get": {}},
+            }
             return httpx.Response(200, json={"servers": [{"url": "/data/jsonapi"}], "paths": paths})
         if request.headers.get("content-type", "").startswith(f"{MEDIA};"):
             return _jsonapi_error(415)
         accept = request.headers.get("accept", "")
         if accept and accept != MEDIA:
             return _jsonapi_error(406)
-        if path == "/data/jsonapi/conformance/types_fixture":
+        if path == "/data/jsonapi/conformance/jsonapi_resource":
             if query.get("sort") or query.get("include") or query.get("unknownparam"):
                 return _jsonapi_error(400)
             data = [dict(r) for r in rows]
-            asked = query.get("fields[types_fixture]")
+            asked = query.get("fields[jsonapi_resource]")
             if asked:
                 data = [{**r, "attributes": {asked[0]: r["attributes"][asked[0]]}} for r in data]
             body = {
@@ -260,8 +265,11 @@ def _jsonapi_server(resource_extra: dict | None = None):
                 "data": data,
             }
             return httpx.Response(200, json=body, headers={"content-type": MEDIA})
-        if path == "/data/jsonapi/conformance/types_fixture/1":
+        if path == "/data/jsonapi/conformance/jsonapi_resource/1":
             body = {"jsonapi": {"version": "1.1"}, "data": rows[0]}
+            return httpx.Response(200, json=body, headers={"content-type": MEDIA})
+        if path == "/data/jsonapi/conformance/aaa_empty":
+            body = {"jsonapi": {"version": "1.1"}, "links": {"self": str(request.url)}, "data": []}
             return httpx.Response(200, json=body, headers={"content-type": MEDIA})
         return _jsonapi_error(404)
 
@@ -324,6 +332,27 @@ def test_a_jsonapi_resource_with_a_field_named_id_fails_the_cases_naming_it():
         "Fields: one namespace, no field named type or id",
         "Resource Objects: only the defined members",
     } <= set(failed)
+
+
+def test_the_jsonapi_fixture_serves_the_read_cases_and_the_job_registers_it():
+    """The cases read a resource type with rows, a key (a lookup) and two attributes (a sparse
+    fieldset): the fixture table, seeded and passed to the instance as an extra table."""
+    import jsonapi_fixture
+
+    (entry,) = jsonapi_fixture.tables()
+    assert (entry["domain_id"], entry["alias"]) == (jsonapi_fixture.SCHEMA, jsonapi_fixture.TABLE)
+    keys = [c["name"] for c in entry["columns"] if c.get("is_primary_key")]
+    attributes = [c["name"] for c in entry["columns"] if not c.get("is_primary_key")]
+    assert keys == ["id"] and len(attributes) >= 2 and jsonapi_fixture.ROWS
+    assert any(s.startswith("INSERT INTO") for s in jsonapi_fixture.ddl())
+    steps = yaml.safe_load((WORKFLOWS / "conformance-jsonapi.yml").read_text())["jobs"]["jsonapi"][
+        "steps"
+    ]
+    seed = next(i for i, s in enumerate(steps) if "jsonapi_fixture.py seed" in s.get("run", ""))
+    start = next(i for i, s in enumerate(steps) if s.get("id") == "start")
+    assert seed < start
+    assert steps[start]["with"]["extra-tables"].endswith("/jsonapi-tables.yaml")
+    assert "jsonapi-tables.yaml" in steps[seed]["run"]
 
 
 def test_jsonapi_member_names():

@@ -46,6 +46,11 @@ from provisa.api.jsonapi.pagination import (
     parse_page_total,
 )
 from provisa.api.jsonapi.resource_id import resource_id_columns, split_resource_id
+from provisa.api.jsonapi.negotiation import (
+    accept_refusal,
+    content_type_refusal,
+    unknown_reserved_parameter,
+)
 from provisa.api.jsonapi.naming import (
     physical_rel_name,
     relationship_name_maps,
@@ -662,6 +667,18 @@ def _jsonapi_error_response(status: int, title: str, detail: str | None = None, 
     )
 
 
+def _negotiation_refusal(request: Request) -> OrjsonResponse | None:  # REQ-257
+    """JSON:API 1.1 content negotiation: the 415 for a Content-Type, then the 406 for an Accept,
+    the server refuses; None when both are served."""
+    unsupported = content_type_refusal(request.headers.get("content-type"))
+    if unsupported is not None:
+        return _jsonapi_error_response(415, "Unsupported Media Type", unsupported)
+    unacceptable = accept_refusal(request.headers.get("accept"))
+    if unacceptable is not None:
+        return _jsonapi_error_response(406, "Not Acceptable", unacceptable)
+    return None
+
+
 def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266, REQ-001, REQ-002
     """Create a JSON:API router with auto-generated endpoints for each table.
 
@@ -733,6 +750,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         )
         from provisa.api.errors import ApiError
 
+        refused = _negotiation_refusal(request)
+        if refused is not None:
+            return refused
         role_id = getattr(request.state, "role", None)
         if not role_id:
             return _jsonapi_error_response(401, "Unauthorized", "authenticated role required")
@@ -807,13 +827,18 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         request: Request, domain_id: str, table_name: str, resource_id: str | None
     ):
         """A collection read, or with ``resource_id`` the single-resource lookup."""
-        # Content negotiation
-        accept = request.headers.get("accept", "")
-        if accept and JSONAPI_CONTENT_TYPE not in accept and "*/*" not in accept:
+        refused = _negotiation_refusal(request)
+        if refused is not None:
+            return refused
+        # JSON:API 1.1: an all-lowercase parameter family is the specification's; one a read does
+        # not process is a 400.
+        reserved = unknown_reserved_parameter(list(request.query_params.keys()))
+        if reserved is not None:
             return _jsonapi_error_response(
-                406,
-                "Not Acceptable",
-                f"This endpoint requires Accept: {JSONAPI_CONTENT_TYPE}",
+                400,
+                "Invalid Query Parameter",
+                f"{reserved!r} is not a query parameter this resource type processes",
+                source_parameter=reserved,
             )
 
         auth_role = getattr(request.state, "role", None)
@@ -918,6 +943,14 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             )
             if not isinstance(lookup, dict):
                 return lookup
+            # JSON:API 1.1 (Fetching Resources): an id that is not a value of its key columns'
+            # types names no resource: 404, as for any id that matches no row.
+            try:
+                request_variables(schema, gql_table, lookup)
+            except RequestRefused:
+                return _jsonapi_error_response(
+                    404, "Not Found", f"No {table_name} resource has id {resource_id!r}"
+                )
             lookup_filters = lookup
         selected_fields = [
             *[physical_to_gql[k] for k in base_keys if physical_to_gql[k] not in selected_fields],
