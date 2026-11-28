@@ -44,6 +44,7 @@ import json
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -165,10 +166,49 @@ class _Sides:
     source: dict[str, str]
 
 
+# How long each side service has to answer before the instance fails to start, naming it.
+_SIDE_SECONDS = 60
+
+# The request the backend's graphql-demo registration makes: an introspection POST.
+_INTROSPECTION = {"query": "{ __schema { queryType { name } } }"}
+
+
+def _side_answers(kind: str, port: int) -> bool:
+    try:
+        if kind == "http":
+            url = f"http://127.0.0.1:{port}/api/v3/pet/findByStatus?status=available"
+            return httpx.get(url, timeout=2).status_code == 200
+        if kind == "graphql":
+            url = f"http://127.0.0.1:{port}/graphql"
+            return httpx.post(url, json=_INTROSPECTION, timeout=2).status_code == 200
+        with socket.create_connection(("127.0.0.1", port), timeout=2):
+            return True
+    except (httpx.TransportError, OSError):
+        return False  # not listening yet: the caller's deadline decides
+
+
+def _await_side(
+    name: str, process: subprocess.Popen, kind: str, port: int, log: Path, seconds: float
+) -> None:
+    """Return once the side service answers; fail naming it when it exits or does not answer.
+
+    The backend registers the demo's sources once at boot, so it starts only after every side
+    service it reads answers."""
+    deadline = time.monotonic() + seconds
+    while not _side_answers(kind, port):
+        tail = log.read_text()[-4000:] if log.exists() else ""
+        assert process.poll() is None, f"the {name} side service exited:\n{tail}"
+        assert time.monotonic() < deadline, (
+            f"the {name} side service did not answer on port {port} in {seconds}s:\n{tail}"
+        )
+        time.sleep(0.5)
+
+
 def _spawn_sides(
     log_dir: Path, base: dict[str, str]
 ) -> tuple[list[subprocess.Popen], int, int, int]:
-    """The pet store, the GraphQL demo and the gRPC demo, each on a leased port."""
+    """The pet store, the GraphQL demo and the gRPC demo, each on a leased port, each answering
+    before this returns."""
     pet, gql, demo_grpc = lease_ports(3)
     processes = []
     for name, app_dir, port in (
@@ -201,6 +241,18 @@ def _spawn_sides(
             {**base, "DEMO_GRPC_PORT": str(demo_grpc)},
         )
     )
+    probes = (
+        ("petstore", "http", pet),
+        ("graphql-demo", "graphql", gql),
+        ("grpc-demo", "tcp", demo_grpc),
+    )
+    try:
+        for process, (name, kind, port) in zip(processes, probes, strict=True):
+            _await_side(name, process, kind, port, log_dir / f"{name}.log", _SIDE_SECONDS)
+    except BaseException:
+        # The caller never receives them: stopped here, so a failed start leaves none running.
+        _stop(processes)
+        raise
     return processes, pet, gql, demo_grpc
 
 
