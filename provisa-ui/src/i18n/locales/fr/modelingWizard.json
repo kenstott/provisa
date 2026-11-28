@@ -4,6 +4,8 @@
     "next": "Suivant",
     "toReview": "Vérifier",
     "back": "Retour",
+    "skipStep": "Ignorer l'étape",
+    "close": "Fermer",
     "remove": "Retirer",
     "domainHelp": "Le domaine sous lequel chaque table créée par cet assistant est enregistrée : son espace de noms pour le contrôle d'accès et les requêtes.",
     "validTime": "Temps de validité",

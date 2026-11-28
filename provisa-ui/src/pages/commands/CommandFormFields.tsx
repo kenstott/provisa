@@ -17,6 +17,7 @@ import {
   NumberInput,
   Select,
   Switch,
+  Textarea,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -40,6 +41,8 @@ import {
   NATIVE_SQL_SOURCE_TYPES,
   isNativeSql,
   isSnowflakeOperation,
+  CODE_ENTERED,
+  argumentsText,
 } from "./types";
 import type { FormState } from "./types";
 import { ColumnGovernanceFields } from "./ColumnGovernanceFields";
@@ -53,6 +56,22 @@ import {
 } from "../../components/form/FormLayout";
 import { assignableDomainIds } from "../../lib/internalDomains";
 import { CodeEditorField } from "../../components/CodeEditorField";
+import { DetailFields } from "../../components/detail/DetailFields";
+
+// REQ-1159 (amended 2026-11-27): what entered code for a command looks like: a function tagged
+// @query (a read) or @command (a write), typed, its result rows a dataclass.
+const ENTERED_PLACEHOLDER = `from dataclasses import dataclass
+
+
+@dataclass
+class Greeting:
+    name: str
+
+
+def greet(name: str) -> list[Greeting]:
+    """@query"""
+    return [Greeting(name)]
+`;
 
 interface CommandFormFieldsProps {
   /** The short step that creates a command: only what it needs in order to exist -- what it
@@ -175,7 +194,10 @@ export function CommandFormFields({
   // REQ-2168: a SQL expression function is a query answering one value, its template its whole
   // definition, so the form asks for its arguments and its template alone.
   const isTemplate = form.implKind === "sql_expression";
-  const declaresItsShape = isStatement || isTemplate;
+  // REQ-1159 (amended 2026-11-27): entered code's declared function is its kind, arguments and
+  // columns, read when the command is saved; the form shows them and asks for none.
+  const entered = form.implKind === CODE_ENTERED;
+  const declaresItsShape = isStatement || isTemplate || entered;
   // REQ-1988: native SQL run on a relational source; it declares its kind, written table and
   // output as any command does.
   const nativeSql = isNativeSql(form.implKind, form.binding);
@@ -195,7 +217,22 @@ export function CommandFormFields({
                     const implKind = val ?? "source_procedure";
                     // A binding belongs to its implementation: another one starts empty.
                     const binding = implKind === form.implKind ? form.binding : {};
-                    setForm({ ...form, implKind, binding });
+                    // REQ-1159 (amended 2026-11-27): entered code's kind, arguments and columns are
+                    // its declaration's, unknown until it is saved; its source is the one of the
+                    // command's name, never a source picked for another implementation.
+                    const declared =
+                      implKind === CODE_ENTERED && form.implKind !== CODE_ENTERED
+                        ? {
+                            sourceId: "",
+                            schemaName: "",
+                            functionName: "",
+                            kind: "",
+                            arguments: [],
+                            outputColumns: [],
+                            returnSchemaMode: "dataset" as const,
+                          }
+                        : {};
+                    setForm({ ...form, implKind, binding, ...declared });
                   }}
                   allowDeselect={false}
                   data-testid="command-impl-kind-select"
@@ -440,6 +477,48 @@ export function CommandFormFields({
                     data-testid="command-binding-callable"
                   />
                 </FormField>
+              )}
+              {entered && (
+                // The code takes a row of its own, its dependency list beneath it, as in the code
+                // source form (CodeSourceFields), whose editor and labels these are.
+                <FieldGroup row>
+                  <FormField size="full" help={t("commandFormFields.enteredCodeHint")}>
+                    <CodeEditorField
+                      required
+                      label={t("codeSourceFields.code")}
+                      language="python"
+                      value={form.enteredCode}
+                      onChange={(text) => setForm({ ...form, enteredCode: text })}
+                      placeholder={ENTERED_PLACEHOLDER}
+                      data-testid="command-entered-code"
+                    />
+                  </FormField>
+                  <FormField size="long" help={t("codeSourceFields.dependenciesHint_python")}>
+                    <Textarea
+                      label={t("codeSourceFields.dependencies")}
+                      placeholder={t("codeSourceFields.dependenciesPlaceholder_python")}
+                      value={form.enteredDependencies}
+                      onChange={(e) =>
+                        setForm({ ...form, enteredDependencies: e.currentTarget.value })
+                      }
+                      autosize
+                      minRows={2}
+                      maxRows={10}
+                      styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+                      data-testid="command-entered-dependencies"
+                    />
+                  </FormField>
+                  <FormField size="medium" help={t("commandFormFields.enteredFunctionHint")}>
+                    <TextInput
+                      label={t("commandFormFields.functionName")}
+                      required
+                      value={form.functionName}
+                      onChange={(e) => setForm({ ...form, functionName: e.currentTarget.value })}
+                      placeholder="greet"
+                      data-testid="command-entered-function"
+                    />
+                  </FormField>
+                </FieldGroup>
               )}
               {!essential && (
                 <>
@@ -724,7 +803,32 @@ export function CommandFormFields({
                 placeholder={t("commandFormFields.descriptionPlaceholder")}
               />
             </FormField>
-            {!isSourceOperation && (
+            {entered && (
+              // What the declared function is, read from the code when the command is saved.
+              <FormField size="full" help={t("commandFormFields.enteredDeclarationHint")}>
+                <DetailFields
+                  testId="command-entered-declaration"
+                  fields={[
+                    {
+                      label: t("commandFormFields.kind"),
+                      value: form.kind ? t(`commandFormFields.${form.kind}`) : null,
+                      testId: "command-entered-kind",
+                    },
+                    {
+                      label: t("commandFormFields.arguments"),
+                      value: argumentsText(form.arguments, t),
+                      testId: "command-entered-arguments",
+                    },
+                    {
+                      label: t("commandFormFields.outputColumnsTitle"),
+                      value: form.outputColumns.map((c) => `${c.name}: ${c.type}`).join(", "),
+                      testId: "command-entered-columns",
+                    },
+                  ]}
+                />
+              </FormField>
+            )}
+            {!isSourceOperation && !entered && (
               // The arguments: one row each (its boxes carry no label, so the remove sits level
               // with them); an argument that takes a dataset is an entry of its row and the
               // dataset's columns, set apart from the next.

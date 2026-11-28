@@ -238,8 +238,13 @@ def test_a_wake_with_the_startup_script_it_last_completed_sets_nothing_up(tmp_pa
     assert "FULL RUN" in boot("release 490")
     assert "FULL RUN" not in boot("release 490")
     assert "FULL RUN" in boot("release 491")
-    # Each node records its completed run as its startup script's last line.
+    # Each node records its completed run as its startup script's last line, after the platform
+    # start: a step between the two (main.tf's break-glass banner copy, REQ-2290) is part of the
+    # full run, and a wake skips it with the rest.
+    record = 'echo "$startup_sha" > "$startup_done"'
     for tf, launch in (("main.tf", "--ram-gb 0\n"), ("sandbox.tf", "--ram-gb 0\n")):
         text = (_TF / tf).read_text()
         after = text[text.rindex(launch) + len(launch) :]
-        assert after.lstrip().startswith('echo "$startup_sha" > "$startup_done"'), tf
+        script_tail = after[: after.index("    SHELL\n")].rstrip().splitlines()
+        assert script_tail[-1].strip() == record, tf
+        assert sum(line.strip() == record for line in script_tail) == 1, tf

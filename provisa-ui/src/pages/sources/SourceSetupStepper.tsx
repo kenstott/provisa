@@ -12,8 +12,10 @@
 // the same step strip wherever it is reached: right after the source is saved, or later from the
 // source's read view. Connect source, Register tables, Review samples, Discover relationships. A step is
 // done once it has an outcome -- recorded per source on the server, shared by every user and
-// environment -- or once it has produced its object (tables registered, a relationship touching
-// them).
+// environment. Register tables is also done once it has produced its tables. Discover
+// relationships is passed undecided only with nothing to relate or without the create
+// relationship right: relationships already touching the source's tables do not decide it, since
+// its review runs against every table in the model and can find more.
 //
 // The strip shows progress only -- done, skipped, current -- and holds no buttons: pressing a done
 // step or the current one opens the flow on it. Opened (the panel's working surface, as it is after
@@ -163,11 +165,9 @@ export function SourceSetupStepper({
 
   const loading = tablesLoading || relationshipsLoading;
   const own = tables.filter((tbl) => tbl.sourceId === sourceId);
-  const ownIds = new Set(own.map((tbl) => tbl.id));
-  const related = relationships.some((r) => touches(r, ownIds));
 
-  // Each step's outcome: recorded, or produced by its object -- the source's tables, or those the
-  // registration here just made, before the list is read again.
+  // Register tables' outcome: recorded, or produced by its object -- the source's tables, or those
+  // the registration here just made, before the list is read again.
   const tablesOutcome =
     outcomes.tables ??
     (own.length > 0 || (registered !== null && registered.tableIds.length > 0)
@@ -176,7 +176,7 @@ export function SourceSetupStepper({
   // With no table of its own, or no other table in the model, there is nothing to relate; without
   // the create relationship right this person cannot. Either way the step is passed, not decided.
   const nothingToRelate = own.length === 0 || tables.length < 2;
-  const relationshipsOutcome = outcomes.relationships ?? (related ? "found" : null);
+  const relationshipsOutcome = outcomes.relationships;
   const relatePassed = relationshipsOutcome !== null || nothingToRelate || !mayRelate;
   // What Discover relationships is recorded as when a later decision closes it undecided.
   const relateClosed = relationshipsOutcome ?? (nothingToRelate ? "none_found" : "skipped");

@@ -92854,7 +92854,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     for JSON. So its true that these can be engine dependent.", "and there is NO fail outright. Its by engine."
     The conformance report gives each function a result per engine: exact, equivalent, refused by name or
     differs. It states no overall failed count. A function refused by name on an engine is that engine''s
-    result. A wrong answer on any engine remains a defect. (Split 2026-11-27 after verification: the rules not yet delivered moved to REQ-2337.) (Amended 2026-11-27 after verification. The engine driver contract test kit that checks every subtype on every engine is delivered with REQ-2169''s kit.)'
+    result. A wrong answer on any engine remains a defect. (Split 2026-11-27 after verification: the rules not yet delivered moved to REQ-2337.) (Amended 2026-11-27 after verification. The engine driver contract test kit that checks every subtype on every engine is delivered with REQ-2169''s kit.) (Amended 2026-11-28) The 2026-10-30 sentence that geometry on Trino uses Trino''s geometry functions is superseded for the shape measures (area, diagonal, height, width, length and point containment). Trino''s geometry functions do not answer as PostgreSQL does for NaN and infinite coordinates, so by the 2026-10-31 rule that an answer that differs is refused, those measures compile to the geo_ops forms that read coordinates as float8in does.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered

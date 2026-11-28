@@ -72,6 +72,9 @@
     "argDefault": "Valeur par défaut de l'argument {{name}}",
     "argDefaultPlaceholder": "Valeur par défaut (vide si obligatoire)",
     "nativeSql": "SQL natif",
-    "nativeSqlHint": "Du SQL dans le dialecte propre de la source, une instruction ou plusieurs, exécutées sur la source dans une seule transaction : toutes sont validées ou aucune. Écrivez un argument sous la forme {{placeholder}} ; chacun est lié comme une valeur. La réponse est faite des lignes de la dernière instruction."
+    "nativeSqlHint": "Du SQL dans le dialecte propre de la source, une instruction ou plusieurs, exécutées sur la source dans une seule transaction : toutes sont validées ou aucune. Écrivez un argument sous la forme {{placeholder}} ; chacun est lié comme une valeur. La réponse est faite des lignes de la dernière instruction.",
+    "enteredCodeHint": "Python conservé avec le modèle et exécuté dans un bac à sable. Marquez la fonction appelée par la commande avec @query (elle lit) ou @command (elle écrit) ; typez ses paramètres et son résultat.",
+    "enteredFunctionHint": "La fonction du code appelée par cette commande.",
+    "enteredDeclarationHint": "Lu depuis la déclaration de la fonction à chaque enregistrement de la commande."
   }
 }

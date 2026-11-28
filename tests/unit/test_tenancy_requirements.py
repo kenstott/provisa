@@ -112,6 +112,11 @@ class TestAuthMiddlewareSkipPaths:
             # REQ-1472: the break-glass credential exchange. Like /auth/login it PRODUCES a token,
             # so it cannot sit behind the bearer gate it is meant to fill.
             "/auth/superuser-login",
+            # REQ-1264 (amended 2026-11-27), REQ-2290: the break-glass password change. A
+            # not-yet-rotated account is refused every bearer and Basic sign-in until it calls
+            # this, so it cannot sit behind the gate; it checks the current password in its body
+            # under the login throttle.
+            "/auth/superuser-password",
             # REQ-1265: the SAML round trip produces the session; nothing on it can carry a bearer.
             "/auth/saml/login",
             "/auth/saml/acs",

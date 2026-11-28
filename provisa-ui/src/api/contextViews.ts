@@ -12,6 +12,7 @@
 // and columns the caller reads are named; the rest come back as a count.
 
 import { requestFailed, serverMessage } from "../i18n/serverMessage";
+import type { ClassificationKind } from "./profiler";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -28,16 +29,12 @@ export interface ContextTagUse {
   usages: ContextPlace[];
   hiddenUsages: number;
   rowFilters: number;
-  classificationKinds: string[];
+  /** The sensitive kinds whose acceptance assigns the tag: a custom one's label is the org's. */
+  classificationKinds: { id: string; label: string; custom: boolean }[];
 }
 
 /** A classification kind, and the columns it was detected on. */
-export interface ContextClassificationKind {
-  id: string;
-  sensitive: boolean;
-  threshold: number;
-  maskPreset: string | null;
-  enabled: boolean;
+export interface ContextClassificationKind extends ClassificationKind {
   detections: ContextPlace[];
   hiddenDetections: number;
 }
@@ -55,7 +52,7 @@ export const fetchContextTags = () =>
   get<{ tags: ContextTagUse[] }>("fetchContextTags", "/admin/context/tags");
 
 export const fetchContextClassification = () =>
-  get<{ kinds: ContextClassificationKind[] }>(
+  get<{ kinds: ContextClassificationKind[]; checks: string[]; masks: string[] }>(
     "fetchContextClassification",
     "/admin/context/classification",
   );

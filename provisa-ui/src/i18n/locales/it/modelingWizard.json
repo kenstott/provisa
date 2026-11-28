@@ -4,6 +4,8 @@
     "next": "Avanti",
     "toReview": "Rivedi",
     "back": "Indietro",
+    "skipStep": "Salta passaggio",
+    "close": "Chiudi",
     "remove": "Rimuovi",
     "domainHelp": "Il dominio in cui viene registrata ogni tabella creata da questa procedura guidata: il suo spazio dei nomi per il controllo degli accessi e le query.",
     "validTime": "Tempo di validità",

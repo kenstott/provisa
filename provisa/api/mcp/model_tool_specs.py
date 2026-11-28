@@ -33,6 +33,7 @@ _CHECKER_ID = {
 }
 _RIGHT_TABLE = "Needs table_registration."
 _RIGHT_ENV = "Needs environment_management."
+_RIGHT_SENSITIVE = "Needs sensitive_data."
 
 
 def _obj(properties: dict, required: list[str] | None = None) -> dict:
@@ -488,6 +489,87 @@ SPECS: list[dict] = [
         ),
         "input_schema": _obj({}),
     },
+    # REQ-2147 (amended 2026-11-25): the classification kinds, as Context > Classification edits
+    # them.
+    {
+        "name": "list_classification_kinds",
+        "description": (
+            "List the profiler's classification kinds: id, label, custom (the org's own) or "
+            "shipped, test (a shipped kind's coded test; a custom kind's pattern, check and "
+            "ignore), threshold (the share of sampled values that must pass), sensitive, "
+            "maskPreset, term (the glossary term a confirmed column takes), enabled. Read only. "
+            + _RIGHT_SENSITIVE
+        ),
+        "input_schema": _obj({}),
+    },
+    {
+        "name": "create_classification_kind",
+        "description": (
+            "Add a custom classification kind: label (its name; its id is custom.<name>), "
+            "pattern (a regular expression the whole value must match, written without ^ or $), "
+            "check (null, or a shipped check by name, e.g. payment_card for Luhn, iban for mod "
+            "97, nl_bsn for the eleven test), ignore (null, or a regular expression of "
+            "characters removed before matching), threshold (0 to 1), sensitive, maskPreset (a "
+            "sensitive kind's mask preset id; null otherwise), term (a glossary term name). To "
+            "change a shipped kind's test, copy its fields into a new custom kind. "
+            + _RIGHT_SENSITIVE
+        ),
+        "input_schema": _obj(
+            {
+                "label": {"type": "string"},
+                "pattern": {"type": "string"},
+                "check": {"type": ["string", "null"]},
+                "ignore": {"type": ["string", "null"]},
+                "threshold": {"type": "number"},
+                "sensitive": {"type": "boolean"},
+                "maskPreset": {"type": ["string", "null"]},
+                "term": {"type": "string"},
+            },
+            [
+                "label",
+                "pattern",
+                "check",
+                "ignore",
+                "threshold",
+                "sensitive",
+                "maskPreset",
+                "term",
+            ],
+        ),
+    },
+    {
+        "name": "change_classification_kind",
+        "description": (
+            "Change one classification kind by id; fields left out are unchanged. Any kind: "
+            "enabled, threshold, sensitive, maskPreset (a sensitive kind has one, any other "
+            "none). A custom kind also: label, pattern, check, ignore, term; a shipped kind's "
+            "test is refused. " + _RIGHT_SENSITIVE
+        ),
+        "input_schema": _obj(
+            {
+                "kind_id": {"type": "string"},
+                "enabled": {"type": "boolean"},
+                "threshold": {"type": "number"},
+                "sensitive": {"type": "boolean"},
+                "maskPreset": {"type": ["string", "null"]},
+                "label": {"type": "string"},
+                "pattern": {"type": "string"},
+                "check": {"type": ["string", "null"]},
+                "ignore": {"type": ["string", "null"]},
+                "term": {"type": "string"},
+            },
+            ["kind_id"],
+        ),
+    },
+    {
+        "name": "delete_classification_kind",
+        "description": (
+            "Delete a custom classification kind by id, with the decisions on it; a shipped kind "
+            "is disabled (change_classification_kind enabled=false), never deleted. Confirm with "
+            "the user (present_choice, mode='yes_no') first. " + _RIGHT_SENSITIVE
+        ),
+        "input_schema": _obj({"kind_id": {"type": "string"}}, ["kind_id"]),
+    },
 ]
 
 NAMES: frozenset[str] = frozenset(s["name"] for s in SPECS)
@@ -522,6 +604,11 @@ _WHOLE_ORG = {
     "generate_environment_model": "An environment's data",
     "reset_environment_mutations": "An environment's data",
     "export_model_config": "The model's config",
+    # REQ-2147: the classification kinds are the org's, tested on every domain's tables.
+    "list_classification_kinds": "The classification kinds",
+    "create_classification_kind": "The classification kinds",
+    "change_classification_kind": "The classification kinds",
+    "delete_classification_kind": "The classification kinds",
 }
 
 
@@ -571,19 +658,21 @@ SYSTEM_SECTION = (
     "get_profile_run_as_declared, "
     "list_profile_constraints, list_profile_checks, list_fake_kinds, get_table_fakes, "
     "propose_fakes, list_synthetic_datasets, list_synthetic_profile_runs, get_synthetic_report, "
-    "export_model_config. The write tools carry their own capability check and act directly once "
+    "export_model_config, list_classification_kinds. The write tools carry their own capability check and act directly once "
     "the user has asked for that change — no propose/confirm_required flow: set_table_profiler, "
     "run_profiler, run_table_profile, declare_table_profile, decide_profile_constraint, forget_profile_constraint, "
     "export_profile_constraint, create_drift_check, create_expectation_check, set_column_fake, "
     "define_synthetic_dataset, generate_synthetic_dataset, drop_synthetic_dataset, "
     "set_environment_data, set_source_binding, recopy_environment_sources, "
     "generate_environment_model, "
-    "reset_environment_mutations "
+    "reset_environment_mutations, create_classification_kind, change_classification_kind, "
+    "delete_classification_kind "
     "(get_environment_detail and get_environment_synthetic_plan read). Where a tool says to "
     "confirm with or ask the user first, ask with present_choice (mode='yes_no'): before "
     "drop_synthetic_dataset, reset_environment_mutations, set_environment_data discarding kept "
-    "mutations, generate_environment_model's second call, and before set_table_profiler "
-    "removes a table from its profiler. propose_fakes saves nothing: show its proposals, ask which "
+    "mutations, generate_environment_model's second call, delete_classification_kind, and before "
+    "set_table_profiler removes a table from its profiler. propose_fakes saves nothing: show its "
+    "proposals, ask which "
     "to save (present_choice, mode='multi'), then call set_column_fake once per chosen column. "
     'When the user names the columns to fake ("create fake defs for users.email, ..."), choose '
     "each fake yourself: read the column's family (get_table_fakes) and a kind or method that "
@@ -592,7 +681,8 @@ SYSTEM_SECTION = (
     "fake def is a column's fake, never a switch of environment. A "
     "refusal from any of these is the admin's own message — report it to the user as it is. "
     "Tables are named by numeric id: get it from find_table_id, never guess one. Per the page-first rule, navigate to /tables before a profiler, constraint, check or fake "
-    "change, and to /admin/environments before a synthetic dataset change."
+    "change, to /admin/environments before a synthetic dataset change, and to "
+    "/context/classification?kind=<id> before a classification kind change."
 )
 
 

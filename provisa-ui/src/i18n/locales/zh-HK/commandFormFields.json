@@ -72,6 +72,9 @@
     "argDefault": "引數 {{name}} 的預設值",
     "argDefaultPlaceholder": "預設值（必填則留空）",
     "nativeSql": "原生 SQL",
-    "nativeSqlHint": "使用資料來源自身方言的 SQL，可為一條或多條陳述式，在資料來源上以同一個交易執行：要麼全部提交，要麼全部不提交。參數寫作 {{placeholder}}，每個參數都作為值綁定。傳回最後一條陳述式的資料列。"
+    "nativeSqlHint": "使用資料來源自身方言的 SQL，可為一條或多條陳述式，在資料來源上以同一個交易執行：要麼全部提交，要麼全部不提交。參數寫作 {{placeholder}}，每個參數都作為值綁定。傳回最後一條陳述式的資料列。",
+    "enteredCodeHint": "隨模型儲存並在沙盒中執行的 Python。以 @query（讀取）或 @command（寫入）標記指令呼叫的函式；為其參數及結果宣告型別。",
+    "enteredFunctionHint": "此指令呼叫的程式碼中的函式。",
+    "enteredDeclarationHint": "每次儲存指令時從函式的宣告中讀取。"
   }
 }

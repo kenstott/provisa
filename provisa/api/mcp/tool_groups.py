@@ -53,8 +53,9 @@ PURPOSES: dict[str, str] = {
     "tags": "Propose tag edits for a person to confirm: assign and unassign a tag on an object, "
     "and cite or uncite a place for an assignment or a tag's definition.",
     "proposals": "Propose a new source or table for a person to review and register.",
-    "test_data": "Test data and environments: profiling and constraints, fake and synthetic "
-    "data, environment data modes and bindings, and exporting the model's config.",
+    "test_data": "Test data and environments: profiling and constraints, classification kinds, "
+    "fake and synthetic data, environment data modes and bindings, and exporting the model's "
+    "config.",
 }
 
 # The groups a sip session is always listed.
@@ -153,6 +154,10 @@ GROUP_OF: dict[str, str] = {
     "create_drift_check": "test_data",
     "create_expectation_check": "test_data",
     "list_fake_kinds": "test_data",
+    "list_classification_kinds": "test_data",
+    "create_classification_kind": "test_data",
+    "change_classification_kind": "test_data",
+    "delete_classification_kind": "test_data",
     "get_table_fakes": "test_data",
     "set_column_fake": "test_data",
     "propose_fakes": "test_data",
@@ -207,6 +212,7 @@ _ENV_MANAGEMENT = frozenset({"environment_management"})
 # environment's owner (whose ownership the call decides).
 _SYNTHETIC_READ = frozenset({"environment_management", "environment_switch"})
 _ENV_DATA = frozenset({"environment_data"})
+_SENSITIVE_DATA = frozenset({"sensitive_data"})
 
 RIGHTS_OF: dict[str, frozenset[str]] = {
     **{t: _NONE for t, g in GROUP_OF.items() if g in SIP_GROUPS | {"statistics", "graph"}},
@@ -268,6 +274,11 @@ RIGHTS_OF: dict[str, frozenset[str]] = {
     "create_drift_check": _DQ_RW,
     "create_expectation_check": _DQ_RW,
     "list_fake_kinds": _HIDING_EDITOR,
+    # profiler_classifications_router: the kinds are the classification decisions' own right.
+    "list_classification_kinds": _SENSITIVE_DATA,
+    "create_classification_kind": _SENSITIVE_DATA,
+    "change_classification_kind": _SENSITIVE_DATA,
+    "delete_classification_kind": _SENSITIVE_DATA,
     "get_table_fakes": _TABLE_EDITOR,
     "set_column_fake": _HIDING_EDITOR,
     "propose_fakes": _TABLE_EDITOR,

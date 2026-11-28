@@ -81,6 +81,7 @@ _TABLES = (
     "glossary_term_domains",
     "glossary_term_edges",
     "glossary_term_experts",
+    "org_settings",  # REQ-2147: the org's classification kinds a run weighs and reads
 )
 _KEY_ENVS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "MISTRAL_API_KEY")
 
@@ -1658,6 +1659,7 @@ def test_the_bound_holds_whatever_the_tables_hold(seed):
         input_tokens,
         4096,
         context.SAMPLE_VALUES,
+        catalogue(),
     )
     assert k == 4096 // 150
     assert len(planned.calls) <= calls, (seed, len(planned.calls), calls)
@@ -1683,10 +1685,17 @@ def test_a_scope_with_no_two_columns_to_compare_counts_no_request():
         return TableFacts(tid, "d", "public", f"t{tid}", None, (), None, columns)
 
     one_text = [table(1, "integer", "text"), table(2, "integer")]
-    assert windows.bound(one_text, None, 100_000, 4096, 5)[1:] == (1, 1)  # t1 x t2 alone
+    assert windows.bound(one_text, None, 100_000, 4096, 5, catalogue())[1:] == (
+        1,
+        1,
+    )  # t1 x t2 alone
     # The one column on both sides is not compared with itself.
-    assert windows.bound([table(1, "text")], [table(1, "text")], 100_000, 4096, 5)[1:] == (0, 0)
-    assert windows.bound([table(1, "text")], [table(2, "date")], 100_000, 4096, 5)[1:] == (0, 0)
+    assert windows.bound([table(1, "text")], [table(1, "text")], 100_000, 4096, 5, catalogue())[
+        1:
+    ] == (0, 0)
+    assert windows.bound([table(1, "text")], [table(2, "date")], 100_000, 4096, 5, catalogue())[
+        1:
+    ] == (0, 0)
 
 
 def test_a_sample_value_is_sent_in_a_bounded_length():
@@ -3143,8 +3152,8 @@ def test_the_count_weighs_each_column_at_the_runs_samples_per_column():
         return TableFacts(tid, "d", "public", f"t{tid}", None, (), None, columns)
 
     tables = [table(i) for i in range(1, 7)]
-    few = windows.bound(tables, None, 4000, 4096, 1)[1]
-    many = windows.bound(tables, None, 4000, 4096, 40)[1]
+    few = windows.bound(tables, None, 4000, 4096, 1, catalogue())[1]
+    many = windows.bound(tables, None, 4000, 4096, 40, catalogue())[1]
     assert many > few
 
 
