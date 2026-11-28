@@ -49,6 +49,18 @@ _ROLES = {
 }
 
 
+async def _refused_as_unknown(session: Any, name: str, arguments: dict) -> str:
+    """The message of the JSON-RPC error (-32602) a tools/call of ``name`` is refused with: a
+    tool the session may not call is unknown to it (the MCP specification's tools/call)."""
+    from mcp import types
+    from mcp.shared.exceptions import McpError
+
+    with pytest.raises(McpError) as refused:
+        await session.call_tool(name, arguments)
+    assert refused.value.error.code == types.INVALID_PARAMS
+    return refused.value.error.message
+
+
 def _command(name: str, visible_to: list[str], **extra: Any) -> dict:
     return {
         "name": name,
@@ -256,9 +268,8 @@ async def test_a_command_the_role_does_not_see_is_refused_as_an_unknown_tool(bea
     state = _state(restock=_command("restock", ["steward"]))
     async with _serving(state) as (_mcp, connect):
         async with connect("?tools=full", token="as-analyst") as session:
-            result = await session.call_tool("restock", {"region": "eu"})
-    assert result.isError
-    assert result.content[0].text == "Unknown tool: restock"
+            said = await _refused_as_unknown(session, "restock", {"region": "eu"})
+    assert said == "Unknown tool: restock"
 
 
 async def test_a_command_named_by_its_mcp_binding_is_listed_by_that_name(bearer):
@@ -340,14 +351,14 @@ async def test_a_command_tool_called_in_sip_is_decided_as_in_full_mode(bearer, m
         for mode in ("full", "sip"):
             async with connect(f"?tools={mode}", token="as-analyst") as session:
                 seen = await session.call_tool("top_regions", {"region": "eu"})
-                unseen = await session.call_tool("restock", {"region": "eu"})
+                unseen = await _refused_as_unknown(session, "restock", {"region": "eu"})
             outcomes[mode] = (
                 (seen.isError, _payload(seen) if not seen.isError else seen.content[0].text),
-                (unseen.isError, unseen.content[0].text),
+                unseen,
             )
     assert outcomes["sip"] == outcomes["full"]
     assert outcomes["sip"][0] == (False, {"rows": [{"region": "eu"}]})
-    assert outcomes["sip"][1] == (True, "Unknown tool: restock")
+    assert outcomes["sip"][1] == "Unknown tool: restock"
     assert ran == [("top_regions", {"region": "eu", "top": 5}, "analyst")] * 2
 
 
@@ -388,12 +399,12 @@ async def test_a_local_session_runs_a_command_tool_as_the_pinned_role(monkeypatc
     async with _serving(state) as (_mcp, connect):
         monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")
         async with connect("?tools=full") as session:
-            refused = await session.call_tool("restock", {"region": "eu"})
+            refused = await _refused_as_unknown(session, "restock", {"region": "eu"})
             unoffered = await session.call_tool("find_table_id", {"domain": "d", "table": "t"})
         monkeypatch.setenv("PROVISA_MCP_ROLE", "steward")
         async with connect("?tools=full") as session:
             result = await session.call_tool("restock", {"region": "eu"})
-    assert refused.isError and refused.content[0].text == "Unknown tool: restock"
+    assert refused == "Unknown tool: restock"
     assert unoffered.content[0].text == "Tool find_table_id is not offered to your roles"
     assert not result.isError, result.content[0].text
     assert ran == ["steward"]
