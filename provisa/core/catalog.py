@@ -170,7 +170,7 @@ def create_catalog(
         # store's replicas schema. It has no catalog of its own: there is nothing live to attach.
         return
     connector = _validate_identifier(trino_connector.trino_connector)
-    props = _build_catalog_properties(source, resolved_password)
+    props = trino_connector.catalog_details(source, catalog_name)
     client_file_wait = 0.0
 
     if not props:
