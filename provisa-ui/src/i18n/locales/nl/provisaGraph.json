@@ -26,7 +26,8 @@
       "checker": "Kwaliteitscontrole",
       "profile": "Profiel",
       "tag": "Tag",
-      "more": "Meer"
+      "more": "Meer",
+      "role": "Rol"
     }
   }
 }

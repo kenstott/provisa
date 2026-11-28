@@ -552,6 +552,12 @@ export function ProvisaGraph({
           const rect = box.getBoundingClientRect();
           packUnder(cy, isolated, rect.height > 0 ? rect.width / rect.height : 1.6);
           fitClear(cy as unknown as CyInstance);
+          // A view may route its lines orthogonally (the role graph's, REQ-2161), as an ERD's
+          // reader may; lineage's stay bezier.
+          if (latest.current.options?.routing === "taxi") {
+            cy.$(".pg-edge").style("curve-style", "taxi");
+            applyTaxiLanes(c);
+          }
           finish();
         };
         // Every group is laid out, the ones no line reaches too: ELK stacks their nodes.

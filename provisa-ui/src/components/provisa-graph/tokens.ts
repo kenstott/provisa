@@ -122,6 +122,9 @@ export const NODE_TYPES = {
   checker: { colour: hue("red"), icon: "shield" },
   profile: { colour: hue("green"), icon: "chart" },
   tag: { colour: hue("grape", 8), icon: "tag" },
+  // A security role (REQ-2161): a role's inheritance graph draws each role as one box, its
+  // capabilities its body.
+  role: { colour: hue("teal", 9), icon: "user" },
   // A fold node stands for a table's columns not drawn: the column's concept.
   more: { colour: hue("gray"), icon: "more" },
 } as const satisfies Record<string, NodeTypeLook>;
