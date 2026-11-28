@@ -36,8 +36,8 @@ _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
 
 _VERSION = "v0.1.0-alpha.512"
-_ENGINE_IMG = f"ghcr.io/kenstott/provisa-trino-engine:{_VERSION}"
-_ZAYCHIK_IMG = f"ghcr.io/kenstott/provisa-zaychik:{_VERSION}"
+_ENGINE_IMG = f"ghcr.io/simpleishard-llc/provisa-trino-engine:{_VERSION}"
+_ZAYCHIK_IMG = f"ghcr.io/simpleishard-llc/provisa-zaychik:{_VERSION}"
 
 
 def _function(name: str) -> str:
@@ -136,8 +136,8 @@ class TestPushEngineEnvSetsImages:
     def test_stale_images_are_replaced(self, tmp_path):
         result = _run_push_engine_env(
             tmp_path,
-            running_engine="ghcr.io/kenstott/provisa-trino-engine:v0.1.0-alpha.391",
-            running_zaychik="ghcr.io/kenstott/provisa-zaychik:v0.1.0-alpha.344",
+            running_engine="ghcr.io/simpleishard-llc/provisa-trino-engine:v0.1.0-alpha.391",
+            running_zaychik="ghcr.io/simpleishard-llc/provisa-zaychik:v0.1.0-alpha.344",
         )
         assert result.returncode == 0, result.stderr
         env = _env_contents(tmp_path)
@@ -175,7 +175,7 @@ class TestPushEngineEnvSetsImages:
         assert f"PROVISA_ZAYCHIK_IMAGE={_ZAYCHIK_IMG}" in _env_contents(tmp_path)
 
     def test_stale_output_names_old_and_new_image(self, tmp_path):
-        old = "ghcr.io/kenstott/provisa-trino-engine:v0.1.0-alpha.391"
+        old = "ghcr.io/simpleishard-llc/provisa-trino-engine:v0.1.0-alpha.391"
         result = _run_push_engine_env(tmp_path, running_engine=old)
         assert result.returncode == 0, result.stderr
         assert old in result.stdout
@@ -183,7 +183,7 @@ class TestPushEngineEnvSetsImages:
 
     def test_image_registry_prefix_is_ghcr_kenstott(self):
         text = _SCRIPT.read_text()
-        assert 'IMAGE_REGISTRY="ghcr.io/kenstott"' in text
+        assert 'IMAGE_REGISTRY="ghcr.io/simpleishard-llc"' in text
 
 
 def _target_steps(target: str) -> list[str]:

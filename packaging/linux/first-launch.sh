@@ -991,7 +991,7 @@ services:
       # and, at each sandbox opened, asks for a newer published one -- no redeploy. A demo's
       # logs are read live from its bundle there.
       PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma,groupexposure,agentdata,banksecrecy,audit,affirmation"
-      PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
+      PROVISA_DEMO_REGISTRY: "https://ghcr.io/simpleishard-llc"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
       # This tier builds the deployment's org at startup too, from the control plane, and the
       # demo config's SQLite sources resolve \${env:PROVISA_DEMO_DIR} there: without it they
@@ -1049,7 +1049,7 @@ services:
       PROVISA_DATA_DIR: /var/lib/provisa
       PROVISA_ENGINE: "duckdb"
       PROVISA_DEMO_BUNDLES: "retail"
-      PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
+      PROVISA_DEMO_REGISTRY: "https://ghcr.io/simpleishard-llc"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
       PROVISA_SANDBOX_INSTANCE: "\${PROVISA_SANDBOX_INSTANCE:-}"
       PROVISA_SANDBOX_IDLE_STOP_SECONDS: "\${PROVISA_SANDBOX_IDLE_STOP_SECONDS:-}"

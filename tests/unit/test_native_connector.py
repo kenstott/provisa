@@ -58,7 +58,7 @@ def _released_spark() -> ConnectorConfig:
         ref="v0.1.0",
         commit="a" * 40,
         language="python",
-        image="ghcr.io/kenstott/provisa-spark-connector",
+        image="ghcr.io/simpleishard-llc/provisa-spark-connector",
         digest="sha256:" + "b" * 64,
         code_hash="c" * 64,
         arch="amd64",
@@ -109,7 +109,7 @@ async def test_a_released_packages_block_is_read_unchanged(
         assert await connector_repo.offered(conn) == []
     spark = connector_repo.builtin("spark")
     assert spark is not None
-    assert spark["image"] == "ghcr.io/kenstott/provisa-spark-connector"
+    assert spark["image"] == "ghcr.io/simpleishard-llc/provisa-spark-connector"
     assert spark["digest"] == "sha256:" + "b" * 64
     assert "native" not in spark
 

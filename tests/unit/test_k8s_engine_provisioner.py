@@ -958,8 +958,8 @@ async def test_convergence_patches_stale_images(monkeypatch, configured):
     """When an existing shard's container images differ from the pinned env-var values,
     ensure_shard_running submits the deployment manifest that contains the new images, so
     the Kubernetes rolling-update controller replaces the pod (REQ-2194)."""
-    new_engine = "ghcr.io/kenstott/provisa-trino-engine:v0.1.0-alpha.512"
-    new_zaychik = "ghcr.io/kenstott/provisa-zaychik:v0.1.0-alpha.512"
+    new_engine = "ghcr.io/simpleishard-llc/provisa-trino-engine:v0.1.0-alpha.512"
+    new_zaychik = "ghcr.io/simpleishard-llc/provisa-zaychik:v0.1.0-alpha.512"
     monkeypatch.setenv("PROVISA_ENGINE_IMAGE", new_engine)
     monkeypatch.setenv("PROVISA_ZAYCHIK_IMAGE", new_zaychik)
 
