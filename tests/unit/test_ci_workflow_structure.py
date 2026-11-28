@@ -2025,10 +2025,61 @@ def test_the_images_node_is_the_nvmrc(dockerfile):
     assert set(tags) == {_node_pin()}, f"{dockerfile} node images {tags}, .nvmrc {_node_pin()}"
 
 
-def test_the_nixos_guests_node_is_the_nvmrc_major():
-    nix = (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+@pytest.mark.parametrize("nix_file", ["configuration.nix", "dev-shell.nix"])
+def test_the_nixos_guests_node_is_the_nvmrc_major(nix_file):
+    # The NixOS guest, and the root flake's development shell.
+    nix = (REPO / "packaging" / "nixos" / nix_file).read_text()
     majors = re.findall(r"\bnodejs_(\d+)\b", nix)
     assert majors == [_node_pin().split(".")[0]], f"nix nodejs {majors}, .nvmrc {_node_pin()}"
+
+
+def test_nixos_vm_staging_reads_source_from_host_not_9p_mount():
+    """The nixos-vm action must not use 'cp -r /mnt/src' in the guest.
+
+    /mnt/src is a virtio-9p mount.  GNU cp calls readlink() on each symlink it
+    encounters while traversing the tree; the 9P kernel driver returns ELOOP for
+    relative symlinks that traverse multiple directory levels, so every VM leg
+    fails with "Too many levels of symbolic links".  The staging step must read
+    the source tree on the HOST runner (native FS) and push it into the guest —
+    e.g. via a tar pipe — so that readlink() never runs against the 9P mount.
+
+    # REQ-1900 (NixOS install tested in CI)
+    """
+    action = yaml.safe_load((REPO / ".github" / "actions" / "nixos-vm" / "action.yml").read_text())
+    steps = action.get("runs", {}).get("steps", [])
+    for step in steps:
+        run = step.get("run", "")
+        assert "cp -r /mnt/src" not in run, (
+            f"Step '{step.get('name')}': 'cp -r /mnt/src' in the guest fails with ELOOP "
+            f"on virtio-9p for relative symlinks.  Stage from the host side instead "
+            f"(e.g. tar -C \"$GITHUB_WORKSPACE\" -cf - . | ssh … vm 'mkdir ~/provisa && tar …')."
+        )
+
+
+def test_tracked_symlinks_targets_exist():
+    """Every tracked symlink must point to an existing file or directory."""
+    result = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "-s"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    broken: list[str] = []
+    for line in result.stdout.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) == 4 and parts[0] == "120000":
+            _mode, sha, _stage, path = parts
+            target = subprocess.run(
+                ["git", "-C", str(REPO), "cat-file", "blob", sha],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+            link_path = REPO / path
+            resolved = (link_path.parent / target).resolve()
+            if not resolved.exists():
+                broken.append(f"{path} -> {target} (resolved: {resolved})")
+    assert not broken, "broken symlink targets:\n" + "\n".join(broken)
 
 
 def test_the_uis_engines_admit_the_nvmrc():
@@ -2243,6 +2294,58 @@ def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none()
     assert restore["uses"] == _PLUGINS_ACTION and restore["with"] == {"phase": "restore"}
     assert names.index("Restore Trino plugins") < names.index("Run lane")
     assert [s for s in steps if s.get("uses") == _PLUGINS_ACTION] == [restore]
+
+
+def test_the_nixos_installer_has_the_plugin_jars_its_trino_mounts():
+    """Run 45655242557: install.sh on the `ci` guest starts the compose stack from the checkout the
+    guest copied at boot, and docker-compose.core.yml mounts trino/plugins/<name> into Trino. The
+    jars are not in git, so each mount was an empty directory, Trino refused it and never became
+    healthy. The installer job restores them before the guest boots, and the priming job runs on
+    every dispatch, not only when container lanes are asked for."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    steps = jobs["installer"]["steps"]
+    names = [s.get("name") for s in steps]
+    restore = steps[names.index("Restore Trino plugins")]
+    assert restore["uses"] == _PLUGINS_ACTION and restore["with"] == {"phase": "restore"}
+    boot = next(i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/nixos-vm")
+    assert names.index("Restore Trino plugins") < boot
+    assert "trino-plugins" in _needed(jobs, "installer")
+    assert "if" not in jobs["trino-plugins"]
+
+
+@pytest.mark.parametrize(
+    ("job", "flake_dir"),
+    [("flake-run", "packaging/nixos/this-commit"), ("flake-module", "packaging/nixos/host")],
+)
+def test_the_nixos_flake_legs_run_the_appimage_this_commit_builds(job, flake_dir):
+    """The `nix run` and module legs ran package.nix's pinned release, which lacked this commit's
+    fixes, so they tested the past. Each now waits for appimage-build and puts its artifact in the
+    flake directory its VM or `nix run` reads by path, before the guest boots."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    upload = next(
+        s for s in jobs["appimage-build"]["steps"] if s.get("uses") == "actions/upload-artifact@v4"
+    )
+    assert "appimage-build" in _needed(jobs, job)
+    steps = jobs[job]["steps"]
+    [download] = [i for i, s in enumerate(steps) if s.get("uses") == "actions/download-artifact@v4"]
+    assert steps[download]["with"] == {"name": upload["with"]["name"], "path": flake_dir}
+    assert upload["with"]["path"].endswith("/Provisa.AppImage")
+    boot = next(i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/nixos-vm")
+    assert download < boot
+    assert f"/{flake_dir}/Provisa.AppImage" in (REPO / ".gitignore").read_text()
+
+
+def test_the_nixos_flake_job_still_fetches_the_pinned_release():
+    """Users' flakes run the pinned release. The flake job builds the importing host, whose
+    service's package is the pinned release asset fetched against its hash; it takes no built
+    AppImage."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    assert "appimage-build" not in _needed(jobs, "flake")
+    assert all(s.get("uses") != "actions/download-artifact@v4" for s in jobs["flake"]["steps"])
+    assert any(
+        "nixosConfigurations.host.config.system.build.toplevel" in (s.get("run") or "")
+        for s in jobs["flake"]["steps"]
+    )
 
 
 def test_no_workflow_fetches_the_conftest_plugin_jars_outside_the_action():
@@ -2522,6 +2625,8 @@ _INSTALL_ARTIFACTS = (
     "provisa-notebook-dist",
     "provisa-duckdb-ext-wheels",
     "trino-plugins",
+    # REQ-2269 (amended 2026-11-26): Zaychik beside Trino, loaded from the amd64 core images.
+    "core-images-amd64-tarball",
 )
 
 
@@ -2576,6 +2681,15 @@ def test_the_install_artifacts_are_ones_the_dry_run_uploads():
         if str(s.get("uses", "")).startswith("actions/download-artifact@")
     ]
     assert downloads == ["trino-plugins"]
+    # core-images-amd64-tarball: the amd64 core images zip a dry run keeps in the run.
+    zipped = [
+        s
+        for s in prebuilt["package-core-images-amd64"]["steps"]
+        if str(s.get("uses", "")).startswith("actions/upload-artifact@")
+    ]
+    assert [s["with"]["name"] for s in zipped] == ["core-images-amd64-tarball"]
+    assert zipped[0]["with"]["path"] == "${{ needs.metadata.outputs.core_images_amd64_name }}"
+    assert zipped[0]["if"] == "${{ !inputs.publish }}"
     for step in _install_job()["steps"]:
         if str(step.get("uses", "")).startswith("actions/download-artifact@"):
             assert step["with"]["pattern"] == "{" + ",".join(_INSTALL_ARTIFACTS) + "}"
@@ -2602,6 +2716,14 @@ def test_the_install_leg_runs_install_host_on_a_clean_runner_before_anything_of_
         i for i, r in enumerate(runs) if "provisa-trino-plugins-${VERSION}.tar.gz" in r
     )
     assert assembled < install
+    # The core images go in beside them, named as the release names them and install-host.sh
+    # reads them on x86_64 (core_images_asset_name).
+    assert (
+        'cp "artifacts/core-images-amd64-tarball/provisa-core-images-amd64-${VERSION}.zip" assets/'
+        in runs[assembled]
+    )
+    action = (REPO / ".github" / "actions" / "release-metadata" / "action.yml").read_text()
+    assert 'core_images_amd64_name=provisa-core-images-amd64-${TAG}.zip"' in action
     # Dispatchable on its own, on the assets of a named dry run.
     dispatch = workflow[True]["workflow_dispatch"]["inputs"]
     assert set(dispatch) == {"version", "run_id"}
@@ -3059,6 +3181,131 @@ def test_zaychik_go_offline_logs_its_fetch_and_retries_through_the_resolver():
     ), props
     # No mirror or alternate repository: artifacts come only from Maven Central.
     assert "mirror" not in text.lower() and "settings.xml" not in text, text
+
+
+def test_the_nixos_guest_stages_what_the_ubuntu_lanes_stage_before_its_tests():
+    """REQ-294: a running Provisa never installs a DuckDB extension or fetches a connector bundle.
+    The Ubuntu lanes stage both before they run (.github/actions/setup-python, suite-prepare.sh);
+    the NixOS guest staged neither, and every core shard's sources were refused with
+    ExtensionNotStaged or BundleNotStaged, the deploy job's service and unit tests too (run
+    45680556710). The guest runs the same staging, the bundles by the very line the Ubuntu lanes
+    run."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    stage_extensions = "uv run --no-sync python scripts/stage_duckdb_extensions.py"
+    prepare = (REPO / "scripts" / "ci" / "lanes" / "suite-prepare.sh").read_text()
+    (bundles,) = [
+        line
+        for line in prepare.splitlines()
+        if "provisa.runtime_deps.stage_pgwire_bundles" in line and "--only file" in line
+    ]
+
+    def guest_run(job: str, name: str) -> tuple[int, str]:
+        steps = jobs[job]["steps"]
+        names = [s.get("name") for s in steps]
+        run = steps[names.index(name)]["run"]
+        assert run.lstrip().startswith(_IN_THE_GUEST), (job, name)
+        return names.index(name), run
+
+    _, deps = guest_run("host", "Install dependencies")
+    assert stage_extensions in deps
+    at, stage = guest_run("lane", "Stage DuckDB extensions and connector bundles")
+    assert stage_extensions in stage
+    assert bundles.strip() in stage
+    names = [s.get("name") for s in jobs["lane"]["steps"]]
+    assert names.index("Install dependencies") < at < names.index("Run lane")
+
+
+def test_the_nixos_ci_host_has_what_the_ubuntu_lanes_install_for_the_suites():
+    """The Ubuntu lanes apt-get gocryptfs and fuse3 (test_org_folder_crypt.py, REQ-1992); the
+    NixOS CI host had no gocryptfs (run 45680556710). The suites also start tools by FHS paths
+    (/bin/bash, PATH=/usr/bin:/bin): the CI host serves those through envfs."""
+    nix = (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+    packages = nix.split("environment.systemPackages", 1)[1].split("];", 1)[0]
+    assert re.search(r"^\s*gocryptfs$", packages, flags=re.M)
+    assert re.search(r"^\s*fuse3$", packages, flags=re.M)
+    assert "services.envfs" in nix and "enable = true;" in nix.split("services.envfs", 1)[1]
+    # A user's host is given preinstall.nix, never the CI host's FHS emulation.
+    assert "envfs" not in (REPO / "packaging" / "nixos" / "preinstall.nix").read_text()
+
+
+def test_the_nixos_unit_tests_run_in_shards_that_fit_the_guest():
+    """In one guest tests/unit took over an hour, the deploy job's limit cut it off, and four xdist
+    workers of 3 to 4.5 GB each outgrew the guest's 12 GB, so the kernel killed them (runs
+    45680556710 and 45720472876). They run in unit-tests.yml's shards, two workers each, split by
+    the times unit-tests.yml's plan reads."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    ubuntu = yaml.safe_load((REPO / ".github" / "workflows" / "unit-tests.yml").read_text())["jobs"]
+    assert all("tests/unit" not in (s.get("run") or "") for s in jobs["host"]["steps"])
+    assert (
+        jobs["unit"]["strategy"]["matrix"]["shard"]
+        == ubuntu["shard"]["strategy"]["matrix"]["shard"]
+    )
+    assert "unit-plan" in _needed(jobs, "unit")
+    steps = jobs["unit"]["steps"]
+    names = [s.get("name") for s in steps]
+    run = steps[names.index("Python unit tests")]["run"]
+    assert run.lstrip().startswith(_IN_THE_GUEST)
+    assert "-p unit_shard tests/unit" in run and " -n 2 " in run
+    assert "PROVISA_UNIT_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}" in run
+    plan_runs = "\n".join(s.get("run") or "" for s in jobs["unit-plan"]["steps"])
+    ubuntu_runs = "\n".join(s.get("run") or "" for s in ubuntu["plan"]["steps"])
+    assert "unit_shard.py timings unit-seconds.json" in plan_runs
+    assert "unit_shard.py timings unit-seconds.json" in ubuntu_runs
+    download = next(s for s in steps if s.get("uses") == "actions/download-artifact@v4")
+    boot = next(i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/nixos-vm")
+    assert steps.index(download) < boot
+
+
+def test_the_nixos_lanes_have_what_an_app_image_build_takes():
+    """test_master_key_survives_recreate_compose.py builds the app image, which takes Pyodide's
+    files from PROVISA_NOTEBOOK_DOWNLOADS and this commit's duckdb-ext wheels from
+    PROVISA_DUCKDB_EXT_WHEELS; the guest had neither (run 45720472876: KeyError:
+    'PROVISA_NOTEBOOK_DOWNLOADS'). The lane fetches both on the runner, copies them into the guest
+    and names them for the run."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    steps = jobs["lane"]["steps"]
+    uses = [s.get("uses") for s in steps]
+    names = [s.get("name") for s in steps]
+    boot = uses.index("./.github/actions/nixos-vm")
+    assert uses.index("./.github/actions/pyodide-downloads") < boot
+    wheels = uses.index("./.github/actions/duckdb-ext-wheels")
+    assert wheels < boot and steps[wheels]["with"] == {"phase": "restore"}
+    assert "duckdb-ext-wheels" in _needed(jobs, "lane")
+    prime = jobs["duckdb-ext-wheels"]["steps"]
+    assert any(
+        s.get("uses") == "./.github/actions/duckdb-ext-wheels" and s["with"] == {"phase": "prime"}
+        for s in prime
+    )
+    copy = names.index("Pyodide downloads and duckdb-ext wheels into the guest")
+    assert boot < copy < names.index("Run lane")
+    copied = steps[copy]["run"]
+    assert '"$PROVISA_NOTEBOOK_DOWNLOADS"' in copied and '"$PROVISA_DUCKDB_EXT_WHEELS"' in copied
+    run = steps[names.index("Run lane")]["run"]
+    assert 'export PROVISA_NOTEBOOK_DOWNLOADS="$HOME/.cache/provisa-notebook-downloads"' in run
+    assert 'export PROVISA_DUCKDB_EXT_WHEELS="$HOME/duckdb-ext-wheels"' in run
+
+
+def test_the_nixos_deploy_job_reads_the_services_own_runtime_deps_cache():
+    """The CI host's service runs `provisa run --data-dir /var/lib/provisa`, whose bundles are in
+    /var/lib/provisa/runtime-deps (provisa/cli.py); the job fetched the AskAmerica bundle into the
+    login's ~/.cache/provisa/runtime_deps and looked for its server's log there (run 45720472876:
+    No such file or directory)."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    runs = {s.get("name"): s.get("run") or "" for s in jobs["host"]["steps"]}
+    assert (
+        "--data-dir /var/lib/provisa"
+        in (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+    )
+    assert (
+        "export PROVISA_RUNTIME_DEPS_CACHE=/var/lib/provisa/runtime-deps"
+        in runs["AskAmerica bundle fetched before the spec"]
+    )
+    spec = runs[
+        "AskAmerica through the deployed UI (add a source; its server listens, its JVM is up)"
+    ]
+    assert "/var/lib/provisa/runtime-deps/*/pgwire-govdata/pgwire-server.log" in spec
+    assert "find /var/lib/provisa -name pgwire-server.log" in runs["Adapter server logs"]
+    assert "~/.cache/provisa" not in "\n".join(runs.values())
 
 
 # The runner image ships packages.microsoft.com as an apt source. A bare `apt-get update` fetches

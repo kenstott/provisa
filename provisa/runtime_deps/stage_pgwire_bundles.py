@@ -57,6 +57,22 @@ def stage(
     return fetched
 
 
+def moved(cache_root: Path) -> list[str]:
+    """The connectors whose pin moved past what is staged here: a bundle staged under another
+    release of ``cache_root`` and not at the connector's pinned one. A connector never staged here
+    is not one: a launcher stages what this machine already reads, at the release now pinned."""
+    resolver = BundleResolver(cache_root=cache_root)
+    found: list[str] = []
+    for source_type in sorted(BUNDLE_CONNECTOR):
+        spec = bundle_spec_for(source_type)
+        if spec.connector in found or resolver.is_cached(spec):
+            continue
+        launchers = cache_root.glob(f"engine-v*/{spec.artifact_name}/bin/{spec.artifact_name}")
+        if any(p.parts[-4] != spec.version for p in launchers):
+            found.append(spec.connector)
+    return found
+
+
 def _excepted(only: Sequence[str]) -> list[str]:
     """What this run leaves out: everything but ``--only``, or nothing."""
     if not only:
@@ -74,12 +90,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Stage the pgwire connector bundles.")
     parser.add_argument("--only", action="append", default=[], metavar="CONNECTOR")
     parser.add_argument("--github-release", action="store_true")
+    parser.add_argument(
+        "--moved",
+        action="store_true",
+        help="only the bundles staged here at an older release than the one pinned",
+    )
     args = parser.parse_args(argv)
     root = default_cache_root()
     print(f"Staging pgwire bundles into: {root}")
     downloader = download_release_asset if args.github_release else download_maven_bundle
     try:
-        excepted = _excepted(args.only)
+        only = list(args.only)
+        if args.moved:
+            only += moved(root)
+            if not only:
+                return 0
+        excepted = _excepted(only)
         stage(root, downloader=downloader, excepted=excepted)
         verify_staged(root, excepted=excepted)
     except BundleUnavailable as refused:

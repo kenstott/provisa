@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import csv
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -231,10 +232,51 @@ def test_the_traceability_matrix_names_the_paragraph(model, tmp_path, monkeypatc
     }
 
 
-def test_the_roadmap_groups_open_requirements_under_their_feature(model, tmp_path, monkeypatch):
-    text = _run("gen_roadmap", model, tmp_path, monkeypatch).read_text()
-    assert "### Regions\n\n- **REQ-3** [SHOULD] [proposed] [2026-Q4]" in text
-    assert "REQ-7" not in text and "REQ-12" not in text
+def test_the_roadmap_follows_the_release_plan_not_the_feature_layer(tmp_path, monkeypatch):
+    """The roadmap is the release plan (docs/arch/release-plan.json), release by release; the open
+    requirements of features.yaml no longer shape it."""
+    module = _script("gen_roadmap")
+    plan = {
+        "capacity_per_release": 30,
+        "capacity_unit": "missing product rules",
+        "basis": "Basis.",
+        "releases": [
+            {
+                "version": "515",
+                "date": "2026-12-01",
+                "status": "planned",
+                "planned_rules": 1,
+                "topics": [
+                    {
+                        "topic": "Regions",
+                        "features": [
+                            {
+                                "req": "REQ-3",
+                                "feature": "Placement",
+                                "benefit": "Data stays where it is placed.",
+                                "priority": "SHOULD",
+                                "state": "accepted",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+        "decisions": [],
+        "already_shipped": [],
+        "off_train": ["REQ-7"],
+    }
+    plan_path = tmp_path / "release-plan.json"
+    plan_path.write_text(json.dumps(plan))
+    monkeypatch.setattr(module, "PLAN_PATH", plan_path)
+    monkeypatch.setattr(module, "OUT_PATH", tmp_path / "roadmap.md")
+    monkeypatch.setattr(module, "PUBLIC_OUT_PATH", tmp_path / "public.md")
+    assert module.main() == 0
+    text = (tmp_path / "roadmap.md").read_text()
+    assert (
+        "## v0.1.0-alpha.515: 2026-12-01 (planned)\n\n### Regions\n\n- **REQ-3** Placement" in text
+    )
+    assert "- **Placement.** Data stays where it is placed." in (tmp_path / "public.md").read_text()
 
 
 def test_the_repository_model_validates():

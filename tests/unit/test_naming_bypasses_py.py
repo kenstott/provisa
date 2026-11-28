@@ -223,6 +223,19 @@ def test_fact_metric_name_is_an_identifier():
     assert [m["name"] for m in reg["metrics"]] == ["sales_net_amt_sum"]
 
 
+def test_fact_metric_name_is_the_authoritys_suggestion(monkeypatch):  # REQ-2361
+    from provisa.mv import modeling
+    from provisa.mv.modeling import Fact, Measure, fact_registration
+
+    monkeypatch.setattr(
+        modeling, "suggest_metric_name", lambda fact, column, agg: f"<{fact}.{column}.{agg}>"
+    )
+    reg = fact_registration(
+        Fact(name="Sales", source="raw.orders", grain=("id",), measures=(Measure("amt"),))
+    )
+    assert [m["name"] for m in reg["metrics"]] == ["<Sales.amt.sum>"]
+
+
 # ── D6: a landed graphql_remote table's remote field name ──────────────────────────────
 
 

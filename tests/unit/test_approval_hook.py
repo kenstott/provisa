@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -22,6 +22,7 @@ from types import SimpleNamespace
 from provisa.auth.approval_hook import (
     ApprovalHookConfig,
     ApprovalRequest,
+    ApprovalResponse,
     CircuitBreaker,
     FallbackPolicy,
     GrpcApprovalHook,
@@ -377,24 +378,24 @@ class TestGrpcApprovalHook:
     async def test_approved(self):
         hook = GrpcApprovalHook(self._grpc_cfg())
 
-        mock_proto_resp = AsyncMock()
+        mock_proto_resp = MagicMock()
         mock_proto_resp.approved = True
         mock_proto_resp.reason = "policy pass"
 
-        mock_stub = AsyncMock()
-        mock_stub.Evaluate = AsyncMock(return_value=mock_proto_resp)
+        mock_stub = MagicMock()
+        mock_stub.Evaluate = MagicMock(return_value=mock_proto_resp)
 
-        mock_channel = AsyncMock()
+        mock_channel = MagicMock()
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=mock_channel),
+            patch("grpc.insecure_channel", return_value=mock_channel),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
         ):
             result = await hook.evaluate(_REQ)
 
         assert result.approved is True
         assert result.reason == "policy pass"
-        mock_stub.Evaluate.assert_awaited_once()
+        mock_stub.Evaluate.assert_called_once()
         call_args = mock_stub.Evaluate.call_args
         proto_req = call_args.args[0]
         assert proto_req.user == "alice"
@@ -404,15 +405,15 @@ class TestGrpcApprovalHook:
     async def test_denied(self):
         hook = GrpcApprovalHook(self._grpc_cfg())
 
-        mock_proto_resp = AsyncMock()
+        mock_proto_resp = MagicMock()
         mock_proto_resp.approved = False
         mock_proto_resp.reason = "PII access blocked"
 
-        mock_stub = AsyncMock()
-        mock_stub.Evaluate = AsyncMock(return_value=mock_proto_resp)
+        mock_stub = MagicMock()
+        mock_stub.Evaluate = MagicMock(return_value=mock_proto_resp)
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
         ):
             result = await hook.evaluate(_REQ)
@@ -426,17 +427,11 @@ class TestGrpcApprovalHook:
 
         hook = GrpcApprovalHook(self._grpc_cfg(fallback=FallbackPolicy.DENY))
 
-        mock_stub = AsyncMock()
-        mock_stub.Evaluate = AsyncMock(
-            side_effect=grpc.aio.AioRpcError(
-                grpc.StatusCode.UNAVAILABLE,
-                None,
-                None,
-            )
-        )
+        mock_stub = MagicMock()
+        mock_stub.Evaluate = MagicMock(side_effect=grpc.RpcError())
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
         ):
             result = await hook.evaluate(_REQ)
@@ -450,17 +445,11 @@ class TestGrpcApprovalHook:
 
         hook = GrpcApprovalHook(self._grpc_cfg(fallback=FallbackPolicy.ALLOW))
 
-        mock_stub = AsyncMock()
-        mock_stub.Evaluate = AsyncMock(
-            side_effect=grpc.aio.AioRpcError(
-                grpc.StatusCode.UNAVAILABLE,
-                None,
-                None,
-            )
-        )
+        mock_stub = MagicMock()
+        mock_stub.Evaluate = MagicMock(side_effect=grpc.RpcError())
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
         ):
             result = await hook.evaluate(_REQ)
@@ -472,15 +461,15 @@ class TestGrpcApprovalHook:
     async def test_channel_reused_across_calls(self):
         hook = GrpcApprovalHook(self._grpc_cfg())
 
-        mock_proto_resp = AsyncMock()
+        mock_proto_resp = MagicMock()
         mock_proto_resp.approved = True
         mock_proto_resp.reason = ""
 
-        mock_stub = AsyncMock()
-        mock_stub.Evaluate = AsyncMock(return_value=mock_proto_resp)
+        mock_stub = MagicMock()
+        mock_stub.Evaluate = MagicMock(return_value=mock_proto_resp)
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=AsyncMock()) as mock_chan_factory,
+            patch("grpc.insecure_channel", return_value=MagicMock()) as mock_chan_factory,
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
         ):
             await hook.evaluate(_REQ)
@@ -501,17 +490,11 @@ class TestGrpcApprovalHook:
         )
         hook = GrpcApprovalHook(cfg)
 
-        mock_stub = AsyncMock()
-        mock_stub.Evaluate = AsyncMock(
-            side_effect=grpc.aio.AioRpcError(
-                grpc.StatusCode.UNAVAILABLE,
-                None,
-                None,
-            )
-        )
+        mock_stub = MagicMock()
+        mock_stub.Evaluate = MagicMock(side_effect=grpc.RpcError())
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
         ):
             await hook.evaluate(_REQ)
@@ -520,7 +503,7 @@ class TestGrpcApprovalHook:
         # Circuit now open — next call must not reach stub
         mock_stub.Evaluate.reset_mock()
         with (
-            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
         ):
             result = await hook.evaluate(_REQ)
@@ -528,6 +511,52 @@ class TestGrpcApprovalHook:
         assert result.approved is False
         assert "circuit breaker open" in result.reason
         mock_stub.Evaluate.assert_not_called()
+
+
+def test_one_grpc_channel_answers_requests_on_every_thread_loop():
+    """REQ-555, REQ-1882: each request runs on its own thread's event loop. One hook's channel
+    answers a call from a loop other than the first one's: a grpc.aio channel answered only on the
+    loop that made it, and the third of five calls was refused by the fallback (run 45940557737)."""
+    import asyncio
+    import threading
+    from concurrent import futures
+
+    import grpc
+
+    from provisa.auth import approval_pb2, approval_pb2_grpc
+
+    peers: list[str] = []
+
+    class _Policy(approval_pb2_grpc.ApprovalServiceServicer):
+        def Evaluate(self, request, context):  # noqa: N802 -- the service's method name
+            peers.append(context.peer())
+            return approval_pb2.ApprovalResponse(approved=True, reason="ok")  # pyright: ignore[reportAttributeAccessIssue]
+
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
+    approval_pb2_grpc.add_ApprovalServiceServicer_to_server(_Policy(), server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    server.start()
+    try:
+        hook = GrpcApprovalHook(
+            ApprovalHookConfig(type=HookType.GRPC, url=f"127.0.0.1:{port}", timeout_ms=5000)
+        )
+
+        def on_its_own_thread() -> ApprovalResponse:
+            loop = asyncio.new_event_loop()
+            answers: list[ApprovalResponse] = []
+            thread = threading.Thread(
+                target=lambda: answers.append(loop.run_until_complete(hook.evaluate(_REQ)))
+            )
+            thread.start()
+            thread.join()
+            loop.close()
+            return answers[0]
+
+        answers = [on_its_own_thread() for _ in range(3)]
+    finally:
+        server.stop(grace=None)
+    assert [a.reason for a in answers] == ["ok", "ok", "ok"]
+    assert len(peers) == 3 and len(set(peers)) == 1  # one channel: one connection
 
 
 # ---------------------------------------------------------------------------

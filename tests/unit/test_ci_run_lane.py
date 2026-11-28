@@ -1467,6 +1467,16 @@ def test_a_suite_lane_stops_starting_tests_before_its_job_limit_cancels_it(lane)
     assert cmd[cmd.index("tests.lane_budget") - 1] == "-p"
 
 
+def test_a_lane_whose_workflow_raised_its_job_limit_budgets_by_that_limit():
+    """The NixOS workflow raises each core shard's limit for its guest; read from the suite's
+    limit, the budget stopped core 6/21 with 25 tests not run (run 45912217581)."""
+    run_lane = _runner()
+    limit = run_lane.SUITE["core"][1]
+    raised = run_lane.budget_s("core", limit + 45)
+    assert raised == run_lane.budget_s("core") + 45 * 60
+    assert raised + run_lane.TEST_TIMEOUT_S + run_lane.JOB_STEPS_S == (limit + 45) * 60
+
+
 def _session_under_budget(tmp_path, deadline: float):
     import os
     import subprocess

@@ -69,6 +69,10 @@ async def _assert_bounded(driver, table: str) -> None:
     # server at a time (Oracle's Arrow batches, REQ-2194) holds a chunk whatever it is asked for,
     # so a read of fewer rows than a chunk measures less than one batch.
     small = f"SELECT id, label FROM {table} WHERE id <= {FETCH_CHUNK_ROWS}"
+    # One read before any is measured: what the process does once, on its first read (pyarrow's
+    # first pa.table imports pandas, 32 MB), is not the read's working memory. A shard that had
+    # not imported pandas before this test measured it in the first read (run 45940557737).
+    await _streamed(driver, small)
     rows, streamed_peak = await _peak_of(lambda: _streamed(driver, whole))
     assert rows == _ROWS
     rows_small, streamed_small = await _peak_of(lambda: _streamed(driver, small))
