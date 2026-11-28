@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import logging
 
 from provisa.core import settings_registry
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
 from provisa.core.operator_floor import OperatorFloorError
 from provisa.executor.result import QueryResult
 
@@ -302,7 +303,11 @@ def ensure_results_bucket_sync(config: RedirectConfig) -> None:  # REQ-141, REQ-
                     raise
                 try:
                     s3.create_bucket(Bucket=config.bucket)
-                    log.info("Created S3 bucket %r at %s", config.bucket, config.endpoint_url)
+                    log.info(
+                        "Created S3 bucket %r at %s",
+                        config.bucket,
+                        redact_url_password(config.endpoint_url),
+                    )
                 except ClientError as create_exc:
                     # Another worker created it between this one's HEAD and CREATE: the bucket
                     # exists, which is the outcome asked for.

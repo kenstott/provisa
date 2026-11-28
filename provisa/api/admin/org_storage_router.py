@@ -149,5 +149,6 @@ async def put_org_storage(  # REQ-1048, REQ-1327
         ),
     )
 
-    log.info("org %s materialization store %s", org_id, "registered" if url else "cleared")
+    outcome = "registered" if url else "cleared"
+    log.info("org %s materialization store %s", org_id, outcome)
     return {"success": True, "org_id": org_id, "storage_url_set": url is not None}

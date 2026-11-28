@@ -30,6 +30,7 @@ from provisa.sparql.source import (
     build_api_source,
 )
 from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/sparql", tags=["admin", "sparql"])
@@ -70,5 +71,7 @@ async def register_sparql_source(body: SparqlSourceRequest, request: Request):  
     async with _control_plane(state).acquire() as conn:
         await persist_api_source(conn, api_source)
     state.api_sources[api_source.id] = api_source
-    log.info("Registered SPARQL source %s at %s", body.source_id, body.endpoint_url)
+    log.info(
+        "Registered SPARQL source %s at %s", body.source_id, redact_url_password(body.endpoint_url)
+    )
     return {"source_id": api_source.id, "base_url": api_source.base_url}

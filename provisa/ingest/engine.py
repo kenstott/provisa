@@ -27,6 +27,8 @@ from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
+
 log = logging.getLogger(__name__)
 
 # Bounded wait for a pooled connection when all are checked out (REQ-1882: the extra request
@@ -106,7 +108,7 @@ def _cached(
         from provisa.core.database import pg_engine, sync_store_url
 
         url = sync_store_url(raw_url())
-        log.info("Creating ingest engine for source=%s url=%s", source_id, url.split("@")[-1])
+        log.info("Creating ingest engine for source=%s url=%s", source_id, redact_url_password(url))
         pool_kwargs: dict[str, Any] = {
             "pool_pre_ping": True,
             "pool_size": 5,
