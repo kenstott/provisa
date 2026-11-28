@@ -1408,8 +1408,11 @@ CH_REGEXPS = Feature(
         limitations={
             _CH: (
                 Limitation(
-                    "The pattern and the flags are literals (a ~ or regexp_like of a pattern "
-                    "that is no literal is ClickHouse's own match). "
+                    "The pattern and the flags are literals, but for ~, ~* and a two-argument "
+                    "regexp_like: a pattern of those that is no literal is read as RE2 reads it, "
+                    "and the call raises 0A000 when it runs where the pattern holds what RE2 reads "
+                    "otherwise or a locale's class meets text beyond ASCII. Any other function of "
+                    "a pattern or flags that is no literal is refused by name. "
                     + _CH_NO_RE2
                     + " A subexpression other than 0 is refused by name; a pattern "
                     "that matches the empty text raises 0A000 where it splits, and a NULL text "
