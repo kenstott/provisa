@@ -302,8 +302,9 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 
 def _ui_address() -> str | None:
-    """The address the UI is served at (``mail.base_url``), for a query node's refusal. The UI
-    server runs in the API's process (``provisa run``), which holds the loaded config."""
+    """The address the UI is served at (``mail.base_url``), for a query node's refusal. Read only
+    on a query node, which is launched by ``provisa run`` and so holds the loaded config; a
+    standalone UI process (``uvicorn provisa.ui_server:app``) loads no config and never reads it."""
     from provisa.api.app import state
 
     return state.config.mail.base_url if state.config is not None else None
