@@ -31,6 +31,7 @@ pytestmark = pytest.mark.unit
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 _FIRST_LAUNCH = _REPO / "packaging" / "linux" / "first-launch.sh"
 
 _PRICES = {
@@ -61,15 +62,20 @@ _PLUGIN_SETTINGS = {
 }
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    text = _SCRIPT.read_text()
+    text = _source()
     start = text.index(f"{name}() {{")
     return text[start : text.index("\n}\n", start) + 3]
 
 
 def _keys_block(name: str) -> str:
     """The `NAME="..."` assignment, which spans continuation lines."""
-    text = _SCRIPT.read_text()
+    text = _source()
     match = re.search(rf'^{name}="[^"]*"$', text, re.MULTILINE)
     assert match, name
     return match.group(0)
@@ -187,7 +193,7 @@ def test_first_launch_forwards_exactly_the_plugins_settings():
 
 def _target_steps(target: str) -> list[str]:
     """The function calls a deploy target runs, in order, from the script's case arm."""
-    text = _SCRIPT.read_text()
+    text = _source()
     arm = re.search(
         rf"^  {re.escape(target)}\)\n(.*?)\n    ;;$|^  {re.escape(target)}\)\n(.*?) ;;$",
         text,
@@ -234,10 +240,95 @@ def test_a_container_environment_larger_than_a_pipe_buffer_passes(tmp_path):
 def test_no_check_in_the_deploy_stops_reading_a_pipe_early():
     # `producer | grep -q` exits at the first match, and under pipefail the producer's broken
     # pipe fails the check whenever it was still writing. Every match reads a variable instead.
-    lines = _SCRIPT.read_text().splitlines()
+    lines = _source().splitlines()
     early = [
         f"{n}: {line.strip()}"
         for n, line in enumerate(lines, 1)
         if re.search(r"\|\s*grep\s+-[A-Za-z]*q", line)
     ]
     assert not early, early
+
+
+# --- push_commerce_env reads the deployment's .env, and refuses by name when it cannot -----------
+#
+# The 513 release deploy ran from a job worktree, which has no .env. A key the container lacked
+# sent push_commerce_env to `sed ... "$REPO/.env" 2>/dev/null | tail -1`; under pipefail the missing
+# file failed the assignment and `set -e` ended the deploy with status 1 and no message, before the
+# recreate, reset and verify ever ran.
+
+
+def _push(tmp_path: Path, container: dict[str, str], env_file: Path) -> subprocess.CompletedProcess:
+    dump = tmp_path / "printenv.txt"
+    dump.write_text("".join(f"{k}={v}\n" for k, v in {"PATH": "/bin", **container}.items()))
+    calls = tmp_path / "calls.txt"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "sudo").write_text(f'#!/bin/bash\ncat "{dump}"\n')
+    (bin_dir / "sudo").chmod(0o755)
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            "\n".join(
+                [
+                    "set -euo pipefail",
+                    "API_CONTAINER=compose-provisa-1",
+                    f"REPO_ENV={env_file}",
+                    'ssh_node() { case "$1" in *printenv*) bash -c "$1" ;;'
+                    f' *) echo "ssh $1" >> {calls} ;; esac; }}',
+                    f'set_node_env() {{ echo "set $1" >> {calls}; }}',
+                    _keys_block("COMMERCE_KEYS"),
+                    _keys_block("COMMERCE_CREDENTIAL_KEYS"),
+                    _function("repo_env_value"),
+                    _function("push_commerce_env"),
+                    "push_commerce_env",
+                ]
+            ),
+        ],
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin"},
+        capture_output=True,
+        text=True,
+    )
+
+
+_COMPLETE = {**_PRICES, "STRIPE_WEBHOOK_SECRET": _SECRET, "STRIPE_MODE": "live", **_LIVE, **_TEST}
+
+
+def test_a_key_the_container_lacks_with_no_env_file_is_refused_by_name(tmp_path):
+    container = {k: v for k, v in _COMPLETE.items() if k != "STRIPE_TEST_SECRET_KEY"}
+    missing = tmp_path / "worktree" / ".env"
+    done = _push(tmp_path, container, missing)
+    assert done.returncode != 0
+    assert "STRIPE_TEST_SECRET_KEY" in done.stderr, done.stderr
+    assert str(missing) in done.stderr, done.stderr
+
+
+def test_a_key_the_container_lacks_is_written_from_the_env_file(tmp_path):
+    container = {k: v for k, v in _COMPLETE.items() if k != "STRIPE_TEST_SECRET_KEY"}
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"OTHER=1\nSTRIPE_TEST_SECRET_KEY={_TEST['STRIPE_TEST_SECRET_KEY']}\n")
+    done = _push(tmp_path, container, env_file)
+    assert done.returncode == 0, done.stderr
+    calls = (tmp_path / "calls.txt").read_text()
+    assert "set STRIPE_TEST_SECRET_KEY" in calls
+    assert "systemctl restart provisa" in calls
+    assert _TEST["STRIPE_TEST_SECRET_KEY"] not in done.stdout + done.stderr
+
+
+def test_a_complete_container_needs_no_env_file(tmp_path):
+    done = _push(tmp_path, _COMPLETE, tmp_path / "absent" / ".env")
+    assert done.returncode == 0, done.stderr
+    assert "up to date" in done.stdout
+
+
+def test_the_env_file_is_the_primary_checkouts_not_the_worktrees():
+    # A job worktree has no .env: the deployment's keys live in the primary checkout's, the same
+    # checkout CLOUD_TF_DIR reads the deployment's terraform state from.
+    lib = _LIB.read_text()
+    assert re.search(
+        r"^REPO_ENV=\"\$\{REPO_ENV:-\$\(git -C \"\$REPO\" worktree list --porcelain \| "
+        r"sed -n '1s/\^worktree //p'\)/\.env\}\"$",
+        lib,
+        re.M,
+    ), "cloud-node-lib.sh does not name the primary checkout's .env"
+    assert '"$REPO/.env"' not in lib

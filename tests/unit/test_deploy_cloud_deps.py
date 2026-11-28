@@ -29,6 +29,7 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 _HELPER = _REPO / "scripts" / "deploy_deps.py"
 
 _spec = importlib.util.spec_from_file_location("deploy_deps", _HELPER)
@@ -48,14 +49,19 @@ triton==3.1.0 ; sys_platform == 'linux'
 """
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    text = _SCRIPT.read_text()
+    text = _source()
     start = text.index(f"\n{name}() {{") + 1
     return text[start : text.index("\n}\n", start) + 3]
 
 
 def _assignment(name: str) -> str:
-    match = re.search(rf"^{name}=.*$", _SCRIPT.read_text(), re.MULTILINE)
+    match = re.search(rf"^{name}=.*$", _source(), re.MULTILINE)
     assert match is not None, name
     return match.group(0)
 
@@ -214,7 +220,7 @@ def test_the_saved_tarball_is_the_one_first_launch_reloads():
 
 
 def _arms() -> dict[str, str]:
-    text = _SCRIPT.read_text()
+    text = _source()
     case = text[text.index('case "$TARGET" in\n  ui)') :]
     return dict(re.findall(r"^  ([a-z-]+)\)\n(?:    #.*\n)*    (.*) ;;$", case, re.MULTILINE))
 
