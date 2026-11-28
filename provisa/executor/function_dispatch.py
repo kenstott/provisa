@@ -311,7 +311,10 @@ def _given_rows(fn: dict, name: str, value: object) -> dict:  # object-ok: any J
 
 async def _query_relation(fn: dict, name: str, sql: str, state, role_id: str | None) -> dict:
     """A relation argument given as a query: run through the one governed pipeline as the
-    caller's role, as any statement the caller writes is (REQ-1159, amended 2026-11-27)."""
+    caller's role, as any statement the caller writes is (REQ-1159, amended 2026-11-27).
+
+    It is read whole (REQ-1159, amended 2026-11-28): not cut to the role's default row limit,
+    held only to the role's hard row cap; a read past that cap is refused by name."""
     from provisa.executor.serialize import result_records
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
@@ -322,13 +325,41 @@ async def _query_relation(fn: dict, name: str, sql: str, state, role_id: str | N
             f"argument {name!r} of {fn.get('name')!r} is read as the calling role; none is bound",
             name=name,
         )
-    plan = await _govern_and_route(sql, role_id)
+    plan = await _govern_and_route(sql, role_id, relation_argument=True)
     result = await _execute_plan(plan, state)
+    if plan.limit_outcome is not None:
+        _refuse_over_row_cap(fn, name, plan, role_id)
     return {
         "kind": "result_set",
         "columns": list(result.column_names),
         "rows": result_records(result),
     }
+
+
+def _refuse_over_row_cap(fn: dict, name: str, plan, role_id: str) -> None:
+    """A relation argument's read that the hard row cap bounding it cut (``cut``), or filled
+    with whether more rows match unknown (``unchecked``), is refused naming the argument, the
+    cap and the role: the command is never handed a truncated relation (REQ-1159)."""
+    cap = plan.row_limit.limit
+    whose = (
+        f"role {role_id!r}" if plan.row_limit.kind == "role" else f"a table role {role_id!r} reads"
+    )
+    found = (
+        "more rows match than that"
+        if plan.limit_outcome == "cut"
+        else "it fills that cap, and whether more rows match could not be checked"
+    )
+    raise ApiError(
+        400,
+        "functions.relation_over_row_cap",
+        f"argument {name!r} of {fn.get('name')!r} is read whole, and its read is held to {cap} "
+        f"rows, the row cap of {whose}: {found}. Narrow the relation or raise the cap.",
+        name=name,
+        cap=cap,
+        cap_kind=plan.row_limit.kind,
+        role=role_id,
+        outcome=plan.limit_outcome,
+    )
 
 
 async def _prepare_args(fn: dict, args: dict, state, role_id: str | None) -> tuple[dict, list[str]]:

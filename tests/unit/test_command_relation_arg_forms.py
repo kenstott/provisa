@@ -91,12 +91,15 @@ def governed(monkeypatch):
 
     ran: list = []
 
-    async def _govern(sql, role_id, **_kw):
-        ran.append((sql, role_id))
-        return "plan"
+    plan = SimpleNamespace(limit_outcome=None, row_limit=None)  # whole: no row cap cut it
 
-    async def _execute(plan, _state):
-        assert plan == "plan"
+    async def _govern(sql, role_id, **kw):
+        assert kw == {"relation_argument": True}  # read whole (REQ-1159, amended 2026-11-28)
+        ran.append((sql, role_id))
+        return plan
+
+    async def _execute(given, _state):
+        assert given is plan
         return QueryResult(rows=[(7, "x")], column_names=["id", "name"], column_types=[])
 
     monkeypatch.setattr(pipeline, "_govern_and_route", _govern)

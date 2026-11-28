@@ -177,6 +177,14 @@ def resolve_row_cap(
     return _get_default_row_limit()
 
 
+def hard_row_cap(role: dict) -> int | None:  # REQ-005, REQ-1159
+    """The role's hard row cap: its own ``max_rows``, None when it sets none. Unlike
+    :func:`resolve_row_cap`, the configured default row limit -- the bound a role's displayed
+    answer takes when it sets no ceiling of its own -- is no part of it."""
+    explicit = role.get("max_rows")
+    return None if explicit is None else int(explicit)
+
+
 def _readable_term_predicate(column: str, domains: frozenset[str]) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """REQ-1593: ``column`` (a term's domains, as |a|b|) names a term the caller may read by
     glossary.readable_term: one with no domains, an enterprise ("*") one, or one in a domain of

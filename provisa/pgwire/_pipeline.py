@@ -1515,12 +1515,13 @@ async def _govern_and_route(
     route_hint: str | None = None,
     product_statement: bool = False,
     building: str | None = None,
+    relation_argument: bool = False,
 ) -> _Plan:
     """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044).
 
     ``serve_cached`` / ``wire_formats`` / ``route_hint`` / ``building``: see
     :func:`route_governed`.
-    ``product_statement``: see :func:`govern_statement`."""
+    ``product_statement`` / ``relation_argument``: see :func:`govern_statement`."""
     from provisa.api.app import state
 
     from provisa.core.statement_warnings import collecting
@@ -1537,6 +1538,7 @@ async def _govern_and_route(
         and route_hint is None
         and building is None
         and not product_statement
+        and not relation_argument
         and _sql_opts_in(sql)
     ):
         pending = _sql_pre_key(state, sql, role_id, session_vars, params, as_of, wire_formats)
@@ -1567,6 +1569,7 @@ async def _govern_and_route(
             route_hint=route_hint,
             product_statement=product_statement,
             building=building,
+            relation_argument=relation_argument,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -1638,6 +1641,7 @@ async def _govern_and_route_planned(
     route_hint: str | None = None,
     product_statement: bool = False,
     building: str | None = None,
+    relation_argument: bool = False,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     """Govern, then route: the two stages of the one pipeline, run back to back."""
     if explain is not None and opening_write_verb(sql) is not None:
@@ -1674,6 +1678,7 @@ async def _govern_and_route_planned(
             session_vars=session_vars,
             product_statement=product_statement,
             as_of=as_of,
+            relation_argument=relation_argument,
         )
     return await _route_bounded(
         governed,
@@ -1894,8 +1899,12 @@ async def govern_statement(
     session_vars: dict[str, str] | None = None,
     product_statement: bool = False,
     as_of: str | None = None,
+    relation_argument: bool = False,
 ) -> _Governed:
     """Stage one of the one pipeline: parse, validate and apply governance. Value-independent.
+
+    ``relation_argument`` (REQ-1159, amended 2026-11-28): the statement reads a command's relation
+    argument, read whole: bounded only by the role's hard row cap, not its default row limit.
 
     ``product_statement`` (REQ-603): the statement is one the product wrote for its own work --
     the profiler's read of a table, which pairs the table with itself, or discovery's key value
@@ -1969,6 +1978,8 @@ async def govern_statement(
             *([("provisa.product_statement", "1")] if product_statement else []),
             # Nor is a catalog statement, whose guard is its own (REQ-2190).
             *([("provisa.catalog", "1")] if current_catalog_request.get() is not None else []),
+            # Nor is a command's relation argument, which no default row limit bounds (REQ-1159).
+            *([("provisa.relation_argument", "1")] if relation_argument else []),
             # A request-level as-of decides which bitemporal views keep their reference.
             *([("provisa.as_of", as_of)] if as_of else []),
         ],
@@ -2042,6 +2053,14 @@ async def govern_statement(
         # system relations and none of the role's tables. Row scope and column rules still hold,
         # as does a ceiling set on a table; the role's context, shared by its statements, is kept.
         gov_ctx = dataclasses.replace(gov_ctx, limit_ceiling=None)
+    elif relation_argument:
+        # REQ-1159 (amended 2026-11-28): a command's relation argument is read whole -- not cut to
+        # the role's default row limit, held only to the role's hard row cap (its own max_rows)
+        # and a ceiling set on a table it reads. A read that cap cuts is refused by its caller
+        # (the plan's limit_outcome), never handed on truncated.
+        from provisa.compiler.stage2 import hard_row_cap
+
+        gov_ctx = dataclasses.replace(gov_ctx, limit_ceiling=hard_row_cap(role))
     # REQ-2219: the first governance rule. Every object the statement touches is in the person's
     # mask, before any other rule reads the statement or any view is read for this reader.
     from provisa.compiler.entitlement_rule import entitlement_violations
