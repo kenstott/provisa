@@ -3448,3 +3448,18 @@ def test_the_nixos_lane_loads_the_primed_zaychik_image_into_the_guest():
     load = next(i for i, t in enumerate(texts) if "docker load" in t and "vm-run" in t)
     run_lane = next(i for i, t in enumerate(texts) if "run_lane.py" in t)
     assert restore < load < run_lane
+
+
+def test_arm64_core_images_build_natively_with_a_bound():
+    """Under QEMU on an x86 runner the arm64 core-images job took 54 min to 2 h 10 min, and the
+    app image's `vite build` stalled 2.5 h in "rendering chunks" (alpha.514, job 140926997608;
+    alpha.513's dry run hung 4 h+). It runs on a native arm64 runner with no emulation, and a
+    timeout ends a stall as this job's failure instead of an open-ended run."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "release-prebuilt.yml").read_text())[
+        "jobs"
+    ]
+    job = jobs["pull-images-core"]
+    assert job["runs-on"] == "ubuntu-24.04-arm"
+    assert job["timeout-minutes"] == 60
+    uses = [s.get("uses") or "" for s in job["steps"]]
+    assert not any(u.startswith("docker/setup-qemu-action") for u in uses), uses
