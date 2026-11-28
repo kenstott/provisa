@@ -17,6 +17,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { render } from "../../../test-utils/render";
 import { GraphStatsPanel } from "../GraphStatsModal";
 import type { GEdge, GNode } from "../graph-model";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 function node(id: number, label: string, name: string): GNode {
   return { id, label, tableLabel: label, properties: { name } };
@@ -95,5 +97,39 @@ describe("GraphStatsPanel (REQ-642)", () => {
     const types = screen.getByText("Edges by type").closest(".mantine-Card-root") as HTMLElement;
     expect(within(types).getByText("KNOWS").nextElementSibling?.textContent).toBe("2");
     expect(within(types).getByText("PLACED").nextElementSibling?.textContent).toBe("1");
+  });
+
+  it("scrolls its cards inside the frame body, which keeps its height", async () => {
+    // The frame's own stylesheet, applied in the frame body chain GraphFrame renders the panel in.
+    const style = document.createElement("style");
+    style.textContent = readFileSync(resolve(__dirname, "../../../pages/GraphPage.css"), "utf8");
+    document.head.appendChild(style);
+    try {
+      render(
+        <div className="gf-body" style={{ height: "200px" }} data-testid="frame-body">
+          <div className="gf-body-content">
+            <GraphStatsPanel nodes={NODES} edges={EDGES} />
+          </div>
+        </div>,
+      );
+      const scroll = await screen.findByTestId("graph-stats-scroll");
+      expect(within(scroll).getByTestId("graph-stats-grid")).toBeTruthy();
+      expect(scroll.parentElement?.className).toBe("gf-body-content");
+
+      const own = getComputedStyle(scroll);
+      expect(own.overflowY).toBe("auto");
+      // min-height 0 lets the flex child shrink below its content, so it is held to the frame.
+      expect(own.minHeight).toBe("0px");
+      expect(own.flexGrow).toBe("1");
+      expect(own.flexShrink).toBe("1");
+
+      const content = getComputedStyle(scroll.parentElement as HTMLElement);
+      expect(content.display).toBe("flex");
+      expect(content.flexDirection).toBe("column");
+      expect(content.overflow).toBe("clip");
+      expect(getComputedStyle(screen.getByTestId("frame-body")).height).toBe("200px");
+    } finally {
+      style.remove();
+    }
   });
 });
