@@ -12,6 +12,10 @@
 // and layouts, on the page's background for the theme. Cytoscape's canvas renderer draws into a
 // jsdom document backed by node-canvas; nothing here is a renderer of its own.
 
+// node-canvas is loaded here, before jsdom: jsdom loads it inside a try and, when its native addon
+// does not load (a shared library the host lacks), reports only "without installing the canvas
+// npm package". Loaded first, the loader's own error is the one render_graph reports.
+import "canvas";
 import { JSDOM } from "jsdom";
 import { buildGraphStylesheet } from "../../src/components/graph/graph-stylesheet";
 import { graphTokens } from "../../src/components/provisa-graph/tokens";

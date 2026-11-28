@@ -5,6 +5,8 @@ name: NixOS
 # its prebuilt wheels, the embedded PostgreSQL, the native tier run as a systemd service,
 # Playwright's Chromium, the ODBC driver, the JDK, and AskAmerica's bundled pgwire server. The container-backed lanes' images are the
 # same on any distro, so only the core lane is repeated here, for the host processes it starts.
+# The repository's root flake is tested here too: its checks, a host that imports its module and
+# runs its service, and `nix run` of its package, both of these on the AppImage this commit builds.
 #
 # A hosted runner is Ubuntu, so NixOS is a QEMU guest on it (.github/actions/nixos-vm, the system
 # in packaging/nixos). Every step after the boot runs in the guest through packaging/nixos/vm-run.
@@ -17,9 +19,19 @@ on:
         description: "Container lanes to run in the guest: comma-separated (core, app, kafka, ...), or none"
         required: false
         default: "core"
+      tests:
+        description: "Run only these tests (space-separated pytest node ids or files), each in the lane that selects it; empty runs the lanes whole"
+        required: false
+        default: ""
+      pytest_args:
+        description: "Extra pytest arguments for the lane jobs (for example -vv)"
+        required: false
+        default: ""
 
+# actions: the unit shards' plan reads the last green Unit Tests run's artifacts.
 permissions:
   contents: read
+  actions: read
 
 env:
   # The Splunk CIM add-on tests/conftest.py fetches: integration-suite-lanes.yml's version.
@@ -39,12 +51,14 @@ jobs:
 
       - uses: ./.github/actions/nixos-vm
 
+      # REQ-294: the service and the unit tests load DuckDB extensions, which a checkout stages.
       - name: Install dependencies
         id: deps
         run: |
           packaging/nixos/vm-run '
             uv sync --frozen --extra dev --extra embedded --extra docs
             uv pip install -e "provisa-client/[dev]" -q
+            uv run --no-sync python scripts/stage_duckdb_extensions.py
             cd provisa-ui && npm ci
           '
 
@@ -109,11 +123,14 @@ jobs:
 
       # The minute the spec below gives AskAmerica's server excludes the cold bundle download
       # (maintainer, 2026-10-11): the ~900 MB pgwire-govdata bundle is fetched into the service
-      # user's runtime-deps cache first, where the save then finds it.
+      # user's runtime-deps cache first, where the save then finds it. The service runs with
+      # --data-dir /var/lib/provisa, so its cache is /var/lib/provisa/runtime-deps (provisa/cli.py),
+      # not the login's ~/.cache/provisa/runtime_deps (run 45720472876: no log found there).
       - name: AskAmerica bundle fetched before the spec
         if: ${{ !cancelled() && steps.service.outcome == 'success' }}
         run: |
           packaging/nixos/vm-run '
+            export PROVISA_RUNTIME_DEPS_CACHE=/var/lib/provisa/runtime-deps
             time uv run python -c "from provisa.runtime_deps.pgwire_bundles import BundleResolver, bundle_spec_for, download_release_asset; print(BundleResolver(downloader=download_release_asset).resolve(bundle_spec_for(\"govdata\")))"
           '
 
@@ -132,7 +149,7 @@ jobs:
             cd provisa-ui
             npx playwright install chromium
             PROVISA_E2E_DEPLOYED_URL=http://127.0.0.1:3000 npx playwright test -c playwright.deployed.config.ts --reporter=list || { cat test-results/*/error-context.md; exit 1; }
-            grep -H "JVM started" ~/.cache/provisa/runtime_deps/*/pgwire-govdata/pgwire-server.log
+            grep -H "JVM started" /var/lib/provisa/runtime-deps/*/pgwire-govdata/pgwire-server.log
           '
 
       # An adapter server writes to a file, not to the journal: in its own state directory or,
@@ -141,8 +158,7 @@ jobs:
         if: ${{ !cancelled() && steps.service.outcome == 'success' }}
         run: |
           packaging/nixos/vm-run '
-            mkdir -p ~/.provisa ~/.cache/provisa
-            find ~/.provisa ~/.cache/provisa -name pgwire-server.log -exec sh -c "echo \"=== \$1\"; grep -c . \"\$1\"; head -n 40 \"\$1\"; echo ...; tail -n 300 \"\$1\"" _ {} \;
+            find /var/lib/provisa -name pgwire-server.log -exec sh -c "echo \"=== \$1\"; grep -c . \"\$1\"; head -n 40 \"\$1\"; echo ...; tail -n 300 \"\$1\"" _ {} \;
           '
 
       - name: Service log
@@ -155,11 +171,7 @@ jobs:
         run: packaging/nixos/vm-run 'sudo systemctl stop provisa'
 
       # Each suite runs whatever the one before it did: the job's purpose is the list of
-      # differences, not the first one.
-      - name: Python unit tests
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: packaging/nixos/vm-run 'uv run pytest tests/unit/ --no-cov -q -n auto -o faulthandler_timeout=300'
-
+      # differences, not the first one. The Python unit tests are the unit job's shards.
       - name: UI unit tests
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: packaging/nixos/vm-run 'cd provisa-ui && npx vitest run'
@@ -181,6 +193,87 @@ jobs:
           path: ${{ runner.temp }}/vm-console.log
           if-no-files-found: ignore
 
+  # The seconds each unit test file took in the last green Unit Tests run on main, for the shards
+  # below to split by, as unit-tests.yml's plan reads them.
+  unit-plan:
+    name: plan the unit shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Times from the last green run on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow unit-tests.yml --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          [ -n "$run" ] || { echo "::error::no successful Unit Tests run on main to take the times from"; exit 1; }
+          echo "times from run $run"
+          gh run download "$run" -R "$GITHUB_REPOSITORY" --pattern 'unit-junit-*' --dir junit
+          python3 scripts/ci/unit_shard.py timings unit-seconds.json junit/*/unit-junit.xml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nixos-unit-seconds
+          path: unit-seconds.json
+          if-no-files-found: error
+
+  # tests/unit in the guest, in unit-tests.yml's seven shards. In one guest the suite took over an
+  # hour and the job's limit cut it off, and four xdist workers of 3 to 4.5 GB each outgrew the
+  # guest's 12 GB: the kernel killed them ("node down: Not properly terminated", runs 45680556710
+  # and 45720472876). Two workers per shard fit.
+  unit:
+    name: unit ${{ matrix.shard }}/${{ strategy.job-total }}
+    needs: unit-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Before the VM boots: the guest copies the checkout, this file included.
+      - uses: actions/download-artifact@v4
+        with:
+          name: nixos-unit-seconds
+
+      - uses: ./.github/actions/nixos-vm
+
+      - name: Install dependencies
+        run: |
+          packaging/nixos/vm-run '
+            uv sync --frozen --extra dev --extra embedded --extra docs
+            uv pip install -e "provisa-client/[dev]" -q
+            uv run --no-sync python scripts/stage_duckdb_extensions.py
+          '
+
+      - name: Python unit tests
+        run: |
+          packaging/nixos/vm-run '
+            export PYTHONPATH=scripts/ci
+            export PROVISA_COLLECTED_IDS="$HOME/provisa/results/ids.txt"
+            export PROVISA_UNIT_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+            export PROVISA_UNIT_SECONDS="$HOME/provisa/unit-seconds.json"
+            mkdir -p results
+            uv run pytest -p unit_shard tests/unit --no-cov -q -n 2 --timeout=300 -o faulthandler_timeout=300 --junitxml=results/unit-junit.xml
+          '
+
+      - name: Results off the guest
+        if: always()
+        run: scp -F "$PROVISA_VM_SSH_CONFIG" -r vm:provisa/results "results-unit-${{ matrix.shard }}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nixos-unit-${{ matrix.shard }}
+          path: results-unit-${{ matrix.shard }}/
+          if-no-files-found: warn
+
+      - *console
+
   # install.sh on NixOS. A host without Provisa's settings is told the steps and nothing is
   # installed; a host with them (the settings file the installer hands out is the one the `ci`
   # guest is built from) is installed on, and its services answer.
@@ -192,8 +285,18 @@ jobs:
       fail-fast: false
       matrix:
         guest: [bare, ci]
+    # install.sh starts the compose stack from the checkout, and Trino mounts trino/plugins/<name>
+    # from it: jars that are not in git. Without them each mount is an empty directory, Trino
+    # refuses it and never becomes healthy (run 45655242557).
+    needs: trino-plugins
     steps:
       - uses: actions/checkout@v4
+
+      # Before the VM boots: the guest copies the checkout to ~/provisa, jars included.
+      - name: Restore Trino plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
 
       - uses: ./.github/actions/nixos-vm
         with:
@@ -311,6 +414,88 @@ jobs:
 
       - *console
 
+  # The repository's root flake, as a Nix user meets it. Its outputs evaluate and its checks
+  # pass, and a host flake that imports inputs.provisa.nixosModules.provisa builds, against this
+  # checkout in place of github:kenstott/provisa.
+  flake:
+    name: root flake (check + module import)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/free-runner-disk
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: nix flake check
+        run: nix flake check --print-build-logs
+
+      - name: A host flake that imports the module builds
+        run: |
+          nix build "path:$GITHUB_WORKSPACE/packaging/nixos/host#nixosConfigurations.host.config.system.build.toplevel" \
+            --override-input provisa "git+file://$GITHUB_WORKSPACE" \
+            --no-write-lock-file --no-link --print-build-logs
+
+  # `nix run` of the root flake on stock NixOS (`bare`: no nix-ld, no Docker): the package
+  # starts, and its API and UI answer. The package runs the AppImage this commit builds, not the
+  # pinned release (packaging/nixos/this-commit): the leg tests what ships. The pinned release
+  # is fetched, and its hash checked, where the flake job builds the importing host.
+  flake-run:
+    name: nix run (bare host)
+    needs: appimage-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # Before the VM boots: the guest copies the checkout, this file included.
+      - uses: actions/download-artifact@v4
+        with:
+          name: provisa-appimage
+          path: packaging/nixos/this-commit
+
+      - uses: ./.github/actions/nixos-vm
+        with:
+          system: bare
+
+      - name: nix run starts Provisa and the services answer
+        run: packaging/nixos/vm-run 'packaging/nixos/ci/flake-runs.sh'
+
+      - *console
+
+  # A user's host (packaging/nixos/host) that enables the root flake's nixosModules.provisa: its
+  # provisa service runs the package as the unprivileged service user, and the API and UI answer.
+  # The guest's package runs the AppImage this commit builds, not the pinned release.
+  flake-module:
+    name: module service (user host)
+    needs: appimage-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # Beside the host flake, which the VM build reads by path: its `ci` system's package.
+      - uses: actions/download-artifact@v4
+        with:
+          name: provisa-appimage
+          path: packaging/nixos/host
+
+      - uses: ./.github/actions/nixos-vm
+        with:
+          flake: packaging/nixos/host
+          system: ci
+          user: ci
+
+      - name: The provisa service is active and answers
+        run: packaging/nixos/vm-run 'packaging/nixos/ci/module-runs.sh'
+
+      - *console
+
   # The same matrix integration-suite-lanes.yml builds, for the lanes asked for.
   plan:
     runs-on: ubuntu-latest
@@ -322,12 +507,14 @@ jobs:
       - id: plan
         env:
           LANES: ${{ inputs.lanes || 'core' }}
+          PROVISA_LANE_TESTS: ${{ inputs.tests }}
         run: |
           if [ "$LANES" = "none" ]; then
             matrix='{"include":[]}'
           else
-            # Each lane's own bound, plus the guest: its build, its boot, and installs with no cache.
-            matrix=$(python3 scripts/ci/run_lane.py --matrix "$LANES" | jq -c '.include[].timeout += 45')
+            # Each lane's own bound plus the guest's, and the core files that run alone each in a
+            # job of their own (scripts/ci/nixos_lane_plan.py).
+            matrix=$(python3 scripts/ci/nixos_lane_plan.py "$(python3 scripts/ci/run_lane.py --matrix "$LANES")")
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           any=$(python3 -c "import json,sys; print('true' if json.loads(sys.argv[1])['include'] else 'false')" "$matrix")
@@ -336,15 +523,27 @@ jobs:
   # Maven Central is asked for the pinned Trino plugin jars once per pin, here: each job that
   # mounts them needs this one and restores its cache (.github/actions/trino-plugins), so
   # parallel jobs never fetch at once (release 510: HTTP 429 mid-collection, run 44081179966).
+  # Primed on every dispatch: the installer job restores the jars whatever lanes are asked for.
   trino-plugins:
     name: Trino plugins
-    needs: plan
-    if: needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+
+  # The app image tests/integration/test_master_key_survives_recreate_compose.py builds stages this
+  # commit's provisa-duckdb-ext wheels (REQ-294): built here once per change to their sources, as
+  # integration-suite-lanes.yml primes them, and restored by each lane job.
+  duckdb-ext-wheels:
+    name: duckdb-ext wheels
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/duckdb-ext-wheels
         with:
           phase: prime
 
@@ -363,8 +562,8 @@ jobs:
           phase: prime
 
   lane:
-    name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
-    needs: [plan, trino-plugins, zaychik-image]
+    name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}${{ matrix.alone && ' alone' || '' }}
+    needs: [plan, trino-plugins, duckdb-ext-wheels, zaychik-image]
     if: needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.timeout }}
@@ -377,7 +576,7 @@ jobs:
       - name: Lane name
         id: key
         run: |
-          name="${{ matrix.lane }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}"
+          name="${{ matrix.lane }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}${{ matrix.alone && '-alone' || '' }}"
           echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
 
       # Before the VM boots: the guest copies the checkout (/mnt/src) to ~/provisa, jars included.
@@ -387,13 +586,41 @@ jobs:
         with:
           phase: restore
 
+      # What the Ubuntu lanes give a test that builds the app image (lane.yml's pyodide-downloads
+      # and duckdb-ext-wheels): without them test_master_key_survives_recreate_compose.py stopped
+      # at KeyError: 'PROVISA_NOTEBOOK_DOWNLOADS' (run 45720472876). Copied into the guest below.
+      - uses: ./.github/actions/pyodide-downloads
+
+      - uses: ./.github/actions/duckdb-ext-wheels
+        with:
+          phase: restore
+
       - uses: ./.github/actions/nixos-vm
+
+      - name: Pyodide downloads and duckdb-ext wheels into the guest
+        run: |
+          set -eo pipefail
+          tar -C "$PROVISA_NOTEBOOK_DOWNLOADS" -cf - . \
+            | ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'mkdir -p ~/.cache/provisa-notebook-downloads && tar -C ~/.cache/provisa-notebook-downloads -xf -'
+          tar -C "$PROVISA_DUCKDB_EXT_WHEELS" -cf - . \
+            | ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'mkdir -p ~/duckdb-ext-wheels && tar -C ~/duckdb-ext-wheels -xf -'
 
       - name: Install dependencies
         run: |
           packaging/nixos/vm-run '
             uv sync --frozen --extra dev
             uv pip install -e "provisa-client/[dev]" -q
+          '
+
+      # What the Ubuntu lanes stage before they run (.github/actions/setup-python,
+      # scripts/ci/lanes/suite-prepare.sh). REQ-294: a running Provisa never installs a DuckDB
+      # extension or fetches a connector bundle, so unstaged, a test's source is refused with
+      # ExtensionNotStaged or BundleNotStaged (run 45680556710, every core shard).
+      - name: Stage DuckDB extensions and connector bundles
+        run: |
+          packaging/nixos/vm-run '
+            uv run --no-sync python scripts/stage_duckdb_extensions.py
+            uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only file --only splunk --github-release
           '
 
       # The runner holds the tarball the restore leaves in ~/zaychik-image; the guest's own docker
@@ -424,7 +651,11 @@ jobs:
           packaging/nixos/vm-run '
             export SPLUNK_CIM_VERSION=${{ env.SPLUNK_CIM_VERSION }}
             export PROVISA_TEST_SERVER_LOG_DIR="$HOME/provisa/results/server-logs"
-            uv run python scripts/ci/run_lane.py ${{ matrix.lane }} ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} --junitxml results/junit.xml
+            export PROVISA_NOTEBOOK_DOWNLOADS="$HOME/.cache/provisa-notebook-downloads"
+            export PROVISA_DUCKDB_EXT_WHEELS="$HOME/duckdb-ext-wheels"
+            # A file that runs alone is the one named test of its job; a targeted dispatch names its own.
+            export PROVISA_LANE_TESTS="${{ matrix.alone || inputs.tests }}"
+            uv run python scripts/ci/run_lane.py ${{ matrix.lane }} ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} --job-minutes ${{ matrix.timeout }} ${{ matrix.deselect }} ${{ inputs.pytest_args }} --junitxml results/junit.xml
           '
 
       - name: Containers that were not healthy

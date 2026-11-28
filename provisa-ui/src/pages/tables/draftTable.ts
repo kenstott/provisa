@@ -107,6 +107,8 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     schemaName: i.schemaName as string,
     tableName: i.tableName as string,
     alias: str(i.alias),
+    sqlSchema: null,
+    sqlName: null,
     description: str(i.description),
     registeredAt: null, // not registered yet
     cacheTtl: typeof i.cacheTtl === "number" ? i.cacheTtl : null,

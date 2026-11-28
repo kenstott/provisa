@@ -10,7 +10,7 @@
 
 // REQ-2234 / REQ-2262: a source's setup, one flow shown with the same strip wherever it is reached
 // -- right after the source is saved (opened: each step with its content) or later from the read
-// view -- Connect source, Register tables, Your data, Discover relationships. Each step is done once
+// view -- Connect source, Register tables, Review samples, Discover relationships. Each step is done once
 // it has an outcome, recorded on the server (setSourceSetupOutcomes), or once it has produced its
 // object. The strip shows progress only and a step in it opens that step; the choices are the
 // panel's command bar (its head): the step's primary action, Skip step where the step may be
@@ -124,20 +124,23 @@ vi.mock("../../tables/RegisterTableForm", () => ({
     </div>
   ),
 }));
-vi.mock("../../tables/YourDataStep", () => ({
-  YourDataStep: ({
+vi.mock("../ReviewSamplesStep", () => ({
+  ReviewSamplesStep: ({
     registered,
     role,
     onOpenQuery,
+    onAllOpened,
   }: {
     registered: Registered;
     role: string | null;
     onOpenQuery: (graphql: string) => void;
+    onAllOpened: () => void;
   }) => (
-    <div data-testid="your-data">
+    <div data-testid="review-samples">
       {`data ${registered.tableIds.join(",")} as ${role}`}
       {registered.refused.map((o) => ` refused ${o.tableName}`).join("")}
-      <button data-testid="your-data-open-query" onClick={() => onOpenQuery(GRAPHQL)} />
+      <button data-testid="review-samples-query-it" onClick={() => onOpenQuery(GRAPHQL)} />
+      <button data-testid="review-samples-all-opened" onClick={onAllOpened} />
     </div>
   ),
 }));
@@ -261,7 +264,7 @@ describe("SourceSetupStepper on the read view: the strip shows progress only", (
     const { onOpen } = renderStepper();
     expect(active()).toBe("1");
     expect(screen.getByText("Connect source")).toBeInTheDocument();
-    expect(screen.getByText("Your data")).toBeInTheDocument();
+    expect(screen.getByText("Review samples")).toBeInTheDocument();
     expect(screen.getByText("Discover relationships")).toBeInTheDocument();
     // The strip holds no buttons, and the read view puts nothing in the panel's head.
     expectRemovedGone();
@@ -273,7 +276,7 @@ describe("SourceSetupStepper on the read view: the strip shows progress only", (
     expect(onOpen).toHaveBeenCalledWith(null);
   });
 
-  it("tables registered, no query yet: Your data is step 2; pressing it opens it", () => {
+  it("tables registered, no query yet: Review samples is step 2; pressing it opens it", () => {
     tables = [table(11, "pg", "orders"), table(12, "pg", "lines"), table(5, "other", "people")];
     relationships = [relationship(5, 99)];
     const { onOpen } = renderStepper();
@@ -281,11 +284,11 @@ describe("SourceSetupStepper on the read view: the strip shows progress only", (
     expect(screen.getByText("2 tables")).toBeInTheDocument();
     expectRemovedGone();
     expect(headActions()).toEqual([]);
-    fireEvent.click(screen.getByText("Your data"));
+    fireEvent.click(screen.getByText("Review samples"));
     expect(onOpen).toHaveBeenCalledWith(null);
   });
 
-  it("Your data decided, no relationships: Discover relationships is step 3; pressing it opens it", () => {
+  it("Review samples decided, no relationships: Discover relationships is step 3; pressing it opens it", () => {
     tables = [table(11, "pg", "orders"), table(12, "pg", "lines"), table(5, "other", "people")];
     relationships = [relationship(5, 99)];
     held = { ...NONE, query: "opened" };
@@ -341,7 +344,7 @@ describe("SourceSetupStepper on the read view: the strip shows progress only", (
     expect(screen.queryByTestId("source-setup-new-tables")).toBeNull();
     await press("source-setup-again");
     expect(lastWrite().outcomes).toEqual({ tables: null, relationships: null, query: null });
-    // The tables it holds still say Register tables is done: back to Your data.
+    // The tables it holds still say Register tables is done: back to Review samples.
     expect(active()).toBe("2");
   });
 
@@ -381,7 +384,7 @@ describe("SourceSetupStepper on the read view: the strip shows progress only", (
     expect(onConnect).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText("Register tables"));
     expect(onOpen).toHaveBeenLastCalledWith(1);
-    fireEvent.click(screen.getByText("Your data"));
+    fireEvent.click(screen.getByText("Review samples"));
     expect(onOpen).toHaveBeenLastCalledWith(2);
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
@@ -389,7 +392,7 @@ describe("SourceSetupStepper on the read view: the strip shows progress only", (
   it("a step not yet reached does nothing", () => {
     tables = [table(5, "other", "people")];
     const { onConnect, onOpen } = renderStepper();
-    fireEvent.click(screen.getByText("Your data"));
+    fireEvent.click(screen.getByText("Review samples"));
     fireEvent.click(screen.getByText("Discover relationships"));
     expect(onConnect).not.toHaveBeenCalled();
     expect(onOpen).not.toHaveBeenCalled();
@@ -423,7 +426,7 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     expect(writes).toHaveLength(0);
   });
 
-  it("registering records the tables and goes on to Your data, step 2, on the tables just registered", async () => {
+  it("registering records the tables and goes on to Review samples, step 2, on the tables just registered", async () => {
     tables = [table(5, "other", "people")];
     registering = { ids: [11, 12], refused: ["broken"] };
     refetchTables.mockImplementation(async () => {
@@ -434,15 +437,15 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     expect(refetchTables).toHaveBeenCalledTimes(1);
     expect(lastWrite().outcomes).toEqual({ tables: "registered", relationships: null, query: null });
     expect(active()).toBe("2");
-    expect(screen.getByTestId("your-data")).toHaveTextContent("data 11,12 as analyst refused broken");
+    expect(screen.getByTestId("review-samples")).toHaveTextContent("data 11,12 as analyst refused broken");
     expect(screen.queryByTestId("register-form")).toBeNull();
   });
 
-  it("Your data: Done, Skip step and Finish later, in that order, in the head", () => {
+  it("Review samples: Done, Skip step and Finish later, in that order, in the head", () => {
     tables = [table(11, "pg", "orders"), table(12, "pg", "lines"), table(5, "other", "people")];
     renderStepper({ open: true });
     expect(active()).toBe("2");
-    expect(screen.getByTestId("your-data")).toHaveTextContent("data 11,12 as analyst");
+    expect(screen.getByTestId("review-samples")).toHaveTextContent("data 11,12 as analyst");
     expect(headActions()).toEqual([
       "source-setup-done",
       "source-setup-skip",
@@ -453,7 +456,7 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     expectRemovedGone();
   });
 
-  it("Your data's Skip step records Query skipped and goes on to Discover relationships", async () => {
+  it("Review samples: Skip step records Query skipped and goes on to Discover relationships", async () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     renderStepper({ open: true });
     await press("source-setup-skip");
@@ -466,7 +469,7 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     expect(screen.getByText("Skipped")).toBeInTheDocument();
   });
 
-  it("Your data's Skip step with nothing to relate ends the flow", async () => {
+  it("Review samples: Skip step with nothing to relate ends the flow", async () => {
     tables = [table(11, "pg", "orders")];
     const { onClose } = renderStepper({ open: true });
     await press("source-setup-skip");
@@ -478,7 +481,7 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("nothing to relate: says so on Your data, and Done ends setup", async () => {
+  it("nothing to relate: says so on Review samples, and Done ends setup", async () => {
     tables = [table(11, "pg", "orders")];
     const { onClose } = renderStepper({ open: true });
     expect(screen.getByTestId("source-setup-relate-note")).toHaveTextContent(
@@ -509,7 +512,7 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     });
   });
 
-  it("Your data's Done with relationships already found ends the flow", async () => {
+  it("Review samples: Done with relationships already found ends the flow", async () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     relationships = [relationship(5, 11)];
     const { onClose } = renderStepper({ open: true });
@@ -523,7 +526,7 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("Your data's Done with relationships to discover goes on to Discover relationships", async () => {
+  it("Review samples: Done with relationships to discover goes on to Discover relationships", async () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     renderStepper({ open: true });
     await press("source-setup-done");
@@ -536,10 +539,22 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     expect(head().getByTestId("source-setup-skip")).toBeInTheDocument();
   });
 
-  it("opening a query from Your data records Query; returning resumes at Discover relationships", async () => {
+  it("every sample opened records Review samples done and goes on to Discover relationships", async () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     renderStepper({ open: true });
-    await press("your-data-open-query");
+    await press("review-samples-all-opened");
+    expect(lastWrite().outcomes).toEqual({
+      tables: "registered",
+      relationships: null,
+      query: "done",
+    });
+    expect(active()).toBe("3");
+  });
+
+  it("opening a query from Review samples records Query; returning resumes at Discover relationships", async () => {
+    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
+    renderStepper({ open: true });
+    await press("review-samples-query-it");
     expect(lastWrite().outcomes).toEqual({
       tables: "registered",
       relationships: null,
@@ -554,7 +569,7 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
   it("opening a query with nothing to relate closes Discover relationships with it", async () => {
     tables = [table(11, "pg", "orders")];
     renderStepper({ open: true });
-    await press("your-data-open-query");
+    await press("review-samples-query-it");
     expect(lastWrite().outcomes).toEqual({
       tables: "registered",
       relationships: "none_found",
@@ -619,11 +634,11 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("not offered without create_relationship: the flow ends at Your data", async () => {
+  it("not offered without create_relationship: the flow ends at Review samples", async () => {
     auth.capabilities = ["table_registration"];
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     const { onClose } = renderStepper({ open: true });
-    expect(screen.getByTestId("your-data")).toBeInTheDocument();
+    expect(screen.getByTestId("review-samples")).toBeInTheDocument();
     expect(screen.getByTestId("source-setup-relate-note")).toHaveTextContent(
       "create relationship right",
     );
@@ -647,8 +662,8 @@ describe("SourceSetupStepper opened: the choices are the panel's command bar", (
     held = { ...NONE, query: "opened" };
     renderStepper({ open: true });
     expect(active()).toBe("3");
-    fireEvent.click(screen.getByText("Your data"));
-    expect(screen.getByTestId("your-data")).toHaveTextContent("data 11 as analyst");
+    fireEvent.click(screen.getByText("Review samples"));
+    expect(screen.getByTestId("review-samples")).toHaveTextContent("data 11 as analyst");
     // A done step gone back to is not decided again: the head offers only Finish later.
     expect(headActions()).toEqual(["source-setup-finish-later"]);
     fireEvent.click(screen.getByText("Register tables"));

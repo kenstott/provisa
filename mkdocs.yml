@@ -120,6 +120,7 @@ nav:
       - Configuration: configuration.md
       - Deployment: deployment.md
       - Install on a Linux Host: install-host.md
+      - Install with Nix: install-nixos.md
       - How to Scale: how-to-scale.md
       - Architecture Review: architecture-review.md
       - Sizing and Tuning: sizing.md

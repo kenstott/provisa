@@ -678,13 +678,18 @@ def targets(lane_name: str, shard_spec: str | None) -> list[str]:
     return shard(test_files(lane.paths), index, total)
 
 
-def budget_s(lane_name: str) -> int | None:
+def budget_s(lane_name: str, job_minutes: int | None = None) -> int | None:
     """How long a suite lane's tests may start for (tests/lane_budget.py): its job limit less the
     job's other steps and one test's bound, so the last test started ends, and the lane fails with
-    its report, before the job limit cancels it with none. None for a lane not in the suite matrix."""
+    its report, before the job limit cancels it with none. None for a lane not in the suite matrix.
+
+    ``job_minutes`` is the limit of a job a workflow planned itself (--job-minutes): the NixOS
+    workflow raises each lane's limit for its guest, and a budget read from the suite's own limit
+    stopped core 6/21 with 25 tests not run (run 45912217581)."""
     if lane_name not in SUITE:
         return None
-    return SUITE[lane_name][1] * 60 - JOB_STEPS_S - TEST_TIMEOUT_S
+    minutes = SUITE[lane_name][1] if job_minutes is None else job_minutes
+    return minutes * 60 - JOB_STEPS_S - TEST_TIMEOUT_S
 
 
 def _under(path: str, roots: tuple[str, ...]) -> bool:
@@ -757,13 +762,18 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("lane", choices=sorted(LANES))
     parser.add_argument("--shard", help="K/N: the Kth of N file shards of the lane")
+    parser.add_argument(
+        "--job-minutes",
+        type=int,
+        help="the job's limit when its workflow planned it, not the suite (budget_s)",
+    )
     args, extra = parser.parse_known_args(argv)
     if named_tests() and not targets(args.lane, args.shard):
         print(f"targeted run: no named test is in lane {args.lane}; nothing to run", flush=True)
         return 0
     cmd = command(args.lane, args.shard, extra)
     env = os.environ.copy()
-    budget = budget_s(args.lane)
+    budget = budget_s(args.lane, args.job_minutes)
     deadline = None
     if budget is not None:
         deadline = time.time() + budget

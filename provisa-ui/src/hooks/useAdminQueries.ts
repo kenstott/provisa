@@ -38,7 +38,7 @@ import type {
   UserSummary,
 } from "../types/admin";
 import type { CompileResult, TableMetadata } from "../api/admin";
-import { useStartingPoll } from "./discoveryStartingPoll";
+import { isStillStarting, useStartingPoll } from "./discoveryStartingPoll";
 import { isAbort } from "./useOrgHas";
 export { useAvailableColumnsMetadataLazy } from "./useAvailableColumnsMetadataLazy";
 import { normalizeRole, type RawRole } from "../lib/roles";
@@ -843,6 +843,14 @@ export function useRoles() {
 // STABLE identity across renders. Callers list them in effect deps; without this,
 // every render produces a new function, re-running the effect → infinite loop.
 
+/** Why a source's tables could not be listed: the server's refusal (a connector bundle
+ * not staged names the bundle and the stage command), or null. A source still starting is not a
+ * refusal: it is asked again (useStartingPoll). */
+function listingRefusal(error: { message?: string } | undefined): string | null {
+  if (!error || isStillStarting(error)) return null;
+  return error.message ?? null;
+}
+
 export function useAvailableSchemas(sourceId: string | null) {
   // A connector-server source (files/sharepoint/splunk) answers STARTING while its server boots
   // (REQ-1824): asked again until it answers, as the table list is. Without the poll, the first
@@ -881,6 +889,7 @@ export function useAvailableTables(sourceId: string | null, schemaName: string |
     loading: loading || starting,
     starting,
     startingTimedOut: timedOut,
+    error: listingRefusal(error),
   };
 }
 
@@ -1034,8 +1043,12 @@ export function useSuggestTableAlias() {
       domainId: string,
       sourceId: string,
     ): Promise<string> => {
-      const { data } = await run({ variables: { tableName, domainId, sourceId } });
-      return data?.suggestTableAlias ?? tableName;
+      // REQ-2361: the alias is the naming authority's suggestion; the table's own name is no
+      // stand-in for it.
+      const { data, error } = await run({ variables: { tableName, domainId, sourceId } });
+      if (error) throw error;
+      if (!data) throw new Error("The server returned no table alias suggestion.");
+      return data.suggestTableAlias;
     },
     loading,
   };
