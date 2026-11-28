@@ -56,6 +56,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+@dataclass(frozen=True)
+class ColdKey:
+    """A cell whose every sample is a first execution: ``param`` takes a key never used before in
+    the run (``first``, ``first`` + 1, ... across both passes and every transport), so each sample
+    lands a row not yet resident and sends statement text no earlier request had."""
+
+    param: str
+    first: int
+
+
 @dataclass
 class Query:
     id: str
@@ -86,6 +96,7 @@ class Query:
     jsonapi: dict | None = None
     iterations: int = 20  # repeat this many times sequentially, for latency percentiles
     params: dict = field(default_factory=dict)
+    cold_key: ColdKey | None = None
 
 
 QUERIES: list[Query] = [
@@ -316,7 +327,11 @@ QUERIES: list[Query] = [
         # lands one row.
         sql="SELECT count(*) FROM perf_bench.bench_order_node WHERE order_id = :order_id",
         params={"order_id": 12345},
-        iterations=1,
+        # One sample cannot tell a 70-140 ms shift from JVM/GC jitter: 10 samples, each on a key
+        # no earlier request used. The keys start past point_lookup's and the warm cell's 12345
+        # and stay under harness_trial.MIN_ORDERS (33_936) so every one names a seeded node.
+        cold_key=ColdKey("order_id", 20_001),
+        iterations=10,
     ),
     Query(
         id="neo4j_materialize_warm",
